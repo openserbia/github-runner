@@ -1,24 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OpenSerbia
 # SPDX-License-Identifier: MIT
-# github-runner — myoung34/github-runner (Ubuntu Noble) + the openserbia CI
-# toolchain (Go, Node LTS, go-task, devbox, docker compose) and a dependency-free
-# Go registration entrypoint (cmd/runner-entrypoint). Published multi-arch
-# (amd64 + arm64) so ONE weekly-rebuilt image serves the whole self-hosted fleet.
+# github-runner — a GitHub Actions self-hosted runner on Chainguard Wolfi (glibc,
+# daily-patched, minimal) + the openserbia CI toolchain (Go, Node LTS, go-task,
+# devbox, docker compose) and a Go JIT-registration entrypoint
+# (cmd/runner-entrypoint). Published multi-arch (amd64 + arm64).
 #
-# :latest is deliberate — the weekly build pulls a fresh myoung34 base + apt
-# upgrade, which is the security-patch channel; pinning the base by digest here
-# would freeze out those rebuilds. Dependabot bumps the FROM via PR instead.
+# The actions/runner agent bundles its OWN trimmed .NET runtime + node20/node24;
+# we add only the native libs it loads (icu/krb5/openssl/zlib/lttng-ust/...).
+# Because the Go entrypoint replaced myoung34's bash registration, we don't need
+# the myoung34/Ubuntu base at all — Wolfi drops the linux-libc-dev kernel-header
+# CVE noise, the `apt upgrade` step, AND the git-lfs recompile (Wolfi's git-lfs
+# is already built against a patched Go).
+#
+# :latest is deliberate — wolfi-base is daily-patched; pinning the base by digest
+# would freeze out those patches. Dependabot bumps the FROM via PR instead.
 
 # ---- entrypoint builder ----------------------------------------------------
-# Compiles the Go registration entrypoint to a static, dependency-free binary.
-# `go test` runs here too, so a test failure fails the image build (no separate
-# CI leg needed). netgo/osusergo + CGO_ENABLED=0 keep it static for a future
-# minimal (Phase-2) base; CGO_ENABLED is set inline because a Taskfile/env var
-# doesn't reliably reach `go build` inside Docker.
-# hadolint ignore=DL3006,DL3007
+# Compiles the Go registration entrypoint to a static, dependency-free binary
+# (`go test`/`go vet` run here too, so a failure fails the image build).
 FROM golang:1.26 AS entrypoint-build
 WORKDIR /src
-# Module mode: deps come from go.mod/go.sum (verified), not a committed vendor/.
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
@@ -30,50 +31,31 @@ RUN CGO_ENABLED=0 go vet ./... \
 
 # ---- runtime ---------------------------------------------------------------
 # hadolint ignore=DL3007
-FROM myoung34/github-runner:ubuntu-noble
+FROM cgr.dev/chainguard/wolfi-base:latest
 
-# Pinned toolchain versions — bumped deliberately (Dependabot / PR), so a
-# rebuild against an unchanged base is reproducible and the last Trivy scan
-# still applies.
-ARG GO_VERSION=1.26.4
+# Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
+ARG RUNNER_VERSION=2.335.1
 ARG NODE_MAJOR=24
-# go-task — pinned release (taskfile.dev/install.sh -b ... accepts a version).
 ARG TASK_VERSION=v3.51.1
-# Docker Compose CLI plugin — pinned (formerly tracked :latest).
 ARG COMPOSE_VERSION=v5.1.4
 
-ENV PATH="/usr/local/go/bin:${PATH}"
+# Runtime deps, installed first with the default /bin/sh (wolfi-base has no bash):
+#  - native libs the bundled .NET runner loads (icu/krb5/openssl/zlib/lttng-ust/
+#    libstdc++/libgcc)
+#  - tools workflows use (go-1.26, git, git-lfs, docker-cli, nodejs-${NODE_MAJOR})
+#  - bash/curl/xz/dumb-init/ca-certs for the entrypoint, downloads, devbox/Nix, TLS
+# Wolfi's rolling repo IS the patch-delivery channel, so versions are unpinned.
+# hadolint ignore=DL3018
+RUN apk add --no-cache \
+      bash curl xz git dumb-init ca-certificates-bundle \
+      icu-libs krb5-libs openssl openssl-config zlib libstdc++ libgcc lttng-ust \
+      go-1.26 git-lfs docker-cli "nodejs-${NODE_MAJOR}"
 
-# bash + pipefail so any `curl | tar` / `curl | bash` step fails the RUN if the
-# download (left of the pipe) errors, instead of silently continuing on a
-# truncated/empty payload. Also satisfies hadolint DL4006.
+# bash now exists → use it with pipefail so the curl|… downloads below fail fast.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# OS security patches — the whole point of the weekly rebuild. myoung34's base
-# is only rebuilt weekly upstream; a full upgrade here pulls any Ubuntu fixes
-# published since, clearing the *fixable* OS-package CVEs the scan flags.
-# (Unfixable kernel-header CVEs in linux-libc-dev remain — they don't apply to a
-# container that uses the HOST kernel; the scan gate uses --ignore-unfixed so
-# they never fail the build.)
-RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade \
- && rm -rf /var/lib/apt/lists/*
-
-# Go from the official tarball (arch-aware: amd64 / arm64).
-RUN ARCH="$(dpkg --print-architecture)" \
- && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xz
-
-# Node.js LTS (nodesource).
-# hadolint ignore=DL3008,DL3009
-RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
- && apt-get install -y --no-install-recommends nodejs \
- && rm -rf /var/lib/apt/lists/*
 
 # go-task (pinned).
 RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin "${TASK_VERSION}"
-
-# devbox.
-RUN curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
 
 # docker compose CLI plugin (pinned, arch-aware: x86_64 / aarch64).
 RUN ARCH="$(uname -m)" \
@@ -82,29 +64,24 @@ RUN ARCH="$(uname -m)" \
     -o /usr/local/lib/docker/cli-plugins/docker-compose \
  && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-# Recompile git-lfs against our Go toolchain. The base ships git-lfs 3.7.1 built
-# with an older Go whose stdlib carries CVE-2025-68121 — the lone *fixable*
-# CRITICAL the scan flags. git-lfs has no newer release, so we rebuild the same
-# 3.7.1 tag from source with Go ${GO_VERSION} (patched stdlib) and overwrite the
-# base binary IN PLACE: Trivy scans the file on disk, so shadowing via PATH is
-# not enough — the vulnerable file itself must be replaced. `go install` on
-# v3.7.1 reproduces the correct version string (verified:
-# "git-lfs/3.7.1 (... go 1.26.4)"). If this ever fails to build, the scan gate
-# catches the unpatched binary and the build stays red rather than shipping it.
-RUN go install github.com/git-lfs/git-lfs/v3@v3.7.1 \
- && NEW="$(go env GOPATH)/bin/git-lfs" \
- && for p in "$(command -v git-lfs || true)" /usr/bin/git-lfs /usr/local/bin/git-lfs; do \
-        if [ -n "$p" ] && [ -e "$p" ]; then install -m0755 "$NEW" "$p"; fi; \
-    done \
- && rm -rf "$(go env GOPATH)/bin/git-lfs" "$(go env GOPATH)/pkg" "$(go env GOCACHE)"
+# devbox (binary only; Nix provisions on first `devbox run` inside a workflow).
+RUN curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
 
-# Go registration entrypoint — replaces myoung34's bash registration AND the old
-# entrypoint-wrapper.sh: sets up git/registry/Go-module auth, JIT-registers an
-# ephemeral runner via the GitHub API, then execs the agent's run.sh (so signals
-# reach the runner directly). See cmd/runner-entrypoint. No CMD: the binary
-# chooses how to launch the agent.
+# actions/runner agent (arch-aware: x64 / arm64). Bundles its own .NET + nodes.
+RUN case "$(uname -m)" in \
+      x86_64) rarch=x64 ;; \
+      aarch64) rarch=arm64 ;; \
+      *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
+    esac \
+ && mkdir -p /actions-runner \
+ && curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz" \
+    | tar -C /actions-runner -xz
+
+# Go JIT-registration entrypoint — replaces myoung34's bash registration: sets up
+# git/registry/Go-module auth, JIT-registers an ephemeral runner (replacing a
+# stale same-named one on conflict), then execs the agent. dumb-init stays PID 1
+# to reap job subprocess zombies + forward signals. See cmd/runner-entrypoint.
 COPY --from=entrypoint-build /runner-entrypoint /usr/local/bin/runner-entrypoint
 
-# dumb-init (from the base) stays PID 1 so job subprocess zombies are reaped and
-# signals are forwarded — matching the base's own `dumb-init … Runner.Listener`.
+WORKDIR /actions-runner
 ENTRYPOINT ["/usr/bin/dumb-init", "/usr/local/bin/runner-entrypoint"]

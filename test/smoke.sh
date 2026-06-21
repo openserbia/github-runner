@@ -34,7 +34,7 @@ case "$out" in
   *) echo "FAIL: entrypoint did not report expected config error; got: $out"; exit 1 ;;
 esac
 
-echo "git-lfs must be recompiled against patched Go (CVE-2025-68121 guard)..."
+echo "git-lfs must be built against patched Go (>=1.26 — Wolfi apk; CVE-2025-68121 guard)..."
 glfs_line=$(run 'git-lfs version')
 echo "  $glfs_line"
 glfs_go=$(echo "$glfs_line" | grep -oE 'go [0-9]+\.[0-9]+\.[0-9]+' | awk '{print $2}')

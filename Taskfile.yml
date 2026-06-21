@@ -24,9 +24,9 @@ tasks:
       # uses the host kernel). Gating on those would make the build permanently
       # red. So the gate fails only on CRITICALs that HAVE a fix — the actionable
       # ones (e.g. the git-lfs Go-stdlib CVE the Dockerfile recompiles away).
-      - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed {{.REF}}
+      - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed --ignorefile .trivyignore {{.REF}}
       # Visibility report (non-gating) — fixable HIGH+CRITICAL.
-      - trivy image --severity HIGH,CRITICAL --ignore-unfixed {{.REF}}
+      - trivy image --severity HIGH,CRITICAL --ignore-unfixed --ignorefile .trivyignore {{.REF}}
 
   sbom:
     desc: Generate CycloneDX SBOM

@@ -6,16 +6,18 @@ SPDX-License-Identifier: MIT
 
 [![build](https://github.com/openserbia/github-runner/actions/workflows/build.yml/badge.svg)](https://github.com/openserbia/github-runner/actions/workflows/build.yml)
 [![lint](https://github.com/openserbia/github-runner/actions/workflows/lint.yml/badge.svg)](https://github.com/openserbia/github-runner/actions/workflows/lint.yml)
+[![image size](https://ghcr-badge.egpl.dev/openserbia/github-runner/size?tag=latest&label=image%20size&color=2496ed)](https://github.com/openserbia/github-runner/pkgs/container/github-runner)
 [![Trivy: CRITICAL-gated](https://img.shields.io/badge/Trivy-CRITICAL--gated-1904da?logo=aqua&logoColor=white)](SECURITY.md)
 [![cosign: signed](https://img.shields.io/badge/cosign-signed-0a7bbb?logo=sigstore&logoColor=white)](#verify-an-image)
 [![SBOM: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX-26a269)](#verify-an-image)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A self-hosted **GitHub Actions runner** image:
-[`myoung34/github-runner`](https://github.com/myoung34/docker-github-actions-runner)
-(Ubuntu Noble) plus the CI toolchain our workflows expect — **Go, Node LTS,
-go-task, devbox, docker compose** — and a small **Go entrypoint** (layered
-`internal/` packages, zerolog logging) that JIT-registers an ephemeral runner.
+A self-hosted **GitHub Actions runner** on **[Chainguard Wolfi](https://github.com/wolfi-dev)**
+(glibc, daily-patched, minimal) — the `actions/runner` agent plus the CI toolchain
+our workflows expect (**Go, Node LTS, go-task, devbox, docker compose**) and a
+small **Go entrypoint** (layered `internal/` packages, zerolog logging) that
+JIT-registers an ephemeral runner. No `myoung34`/Ubuntu base: the Go entrypoint
+replaced its bash registration, so we assemble the runner directly on Wolfi.
 
 Published **multi-arch** to GHCR and **rebuilt weekly**:
 
@@ -45,42 +47,45 @@ The runner image was previously built ad-hoc on each host (`docker compose build
 3. **Per-arch duplication.** Each architecture (and each host) built its own
    near-identical image, multiplying disk, build time, and scan noise.
 
-The trigger was a scan that flagged the runner with a wall of "CRITICAL" CVEs —
-**~11 of 12 of which were `linux-libc-dev` kernel-header findings that don't even
-apply to a container** (it uses the host kernel) and have no upstream fix. The
-real signal was drowning in noise. This repo is the fix: a **single, multi-arch,
-weekly-rebuilt, Trivy-gated, cosign-signed** image whose scan only ever reports
-things you can actually act on.
+The trigger was a scan that flagged the old Ubuntu-based runner with a wall of
+"CRITICAL" CVEs — **~11 of 12 of which were `linux-libc-dev` kernel-header
+findings that don't even apply to a container** (it uses the host kernel) and
+have no upstream fix. The real signal was drowning in noise. This repo is the
+fix: a **single, multi-arch, weekly-rebuilt, Trivy-gated, cosign-signed** image
+on a minimal Wolfi base — whose scan only ever reports things you can actually
+act on (the kernel-header class simply doesn't exist on Wolfi).
 
 ## Architecture
 
 - **Multi-arch, one source.** One `Dockerfile`, built natively per arch on
   self-hosted runners, stitched into a single `:latest` manifest list. One place
   to bump; one Trivy row for the whole fleet.
-- **Weekly scheduled rebuild** pulls a fresh base + `apt upgrade` (the
-  patch-delivery channel) on a cadence, not by accident.
+- **Weekly scheduled rebuild** pulls a fresh, daily-patched `wolfi-base` and the
+  latest `apk` packages on a cadence, not by accident. (No `apt upgrade` step and
+  no git-lfs recompile — Wolfi ships current packages, and its `git-lfs` is
+  already built against a patched Go.)
 - **Go registration entrypoint** ([`cmd/runner-entrypoint`](cmd/runner-entrypoint),
   with logic in `internal/{config,observability,githubapi,runner}` and tests).
   A small static Go binary replaces the bash registration glue: it sets up
   git/registry/Go-module auth, registers an **ephemeral** runner via the GitHub
-  [JIT-config API](https://docs.github.com/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-an-organization),
-  then `exec`s the agent's `run.sh` so signals reach the runner directly. The
+  [JIT-config API](https://docs.github.com/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-an-organization)
+  (replacing a stale same-named registration on conflict), then `exec`s
+  `bin/Runner.Listener` directly under `dumb-init` so signals reach the agent. The
   ephemeral "loop" is the container restart policy — one job per registration.
 
-### The CVE-scan design (important)
+### The CVE-scan design
 
-The Ubuntu base carries ~11 CRITICAL CVEs in **`linux-libc-dev`** (kernel
-headers). These **don't apply to a container** — it uses the *host* kernel; the
-headers are compile-time only — and they're `fixed=none` upstream, so no rebuild
-can clear them. The scan therefore uses **`--ignore-unfixed`**: the gate fails
-only on CRITICALs that actually **have a fix**.
+On Wolfi the `linux-libc-dev` kernel-header CRITs simply **don't exist** (Wolfi
+doesn't ship them) and the OS-package surface is minimal + daily-patched, so the
+gate is meaningful out of the box. The scan still uses **`--ignore-unfixed`**
+(report only actionable findings) and **fails the build on a fixable CRITICAL**.
 
-That leaves exactly one fixable CRITICAL: **CVE-2025-68121**, a Go-stdlib issue
-baked into the pre-compiled `git-lfs` 3.7.1 binary. git-lfs has no newer release,
-so the Dockerfile **recompiles git-lfs 3.7.1 from source against the Go 1.26.4 we
-already install** (patched stdlib) and overwrites the base binary in place —
-Trivy scans the file on disk, so shadowing via `PATH` is not enough. The smoke
-test asserts git-lfs reports `go >= 1.26`, so the fix can't silently regress.
+What remains is the `actions/runner` agent's own **bundled** dependencies — its
+vendored `node20`/`node24` (tar/minimatch/glob) and the `docker-cli` Go binaries
+— which are identical on any base and only clear when upstream ships a newer
+agent / Wolfi rebuilds. A small [`.trivyignore`](.trivyignore) holds CVEs whose
+Trivy-listed "fix" isn't actually shipped by the Wolfi repo (currently one
+`openssl-config` config-package mis-match), each with a documented reason.
 
 ## Verify an image
 

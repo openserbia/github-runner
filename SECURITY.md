@@ -32,22 +32,23 @@ band.
 
 **You can expect:**
 
-- A multi-arch (amd64 + arm64) image **rebuilt weekly** with a fresh base +
-  `apt upgrade`, so fixable OS-package CVEs flow through on a cadence.
+- A multi-arch (amd64 + arm64) image on a minimal, **daily-patched Chainguard
+  Wolfi** base, **rebuilt weekly** so fresh `apk` packages flow through on a cadence.
 - A **Trivy-gated** build that **fails on fixable CRITICAL** CVEs
   (`--ignore-unfixed`); HIGH + unfixable findings are reported, non-gating.
-- `git-lfs` **recompiled against a patched Go** to clear CVE-2025-68121, with a
-  smoke-test guard against regression.
 - A CycloneDX **SBOM** attested to every image, and **keyless cosign signatures**
   (Sigstore / GitHub OIDC) on every pushed image and the multi-arch index.
 - **No secrets baked into the image** — git/registry auth (`GITHUB_PAT`,
-  `~/.docker/config.json`) is supplied at runtime by the entrypoint wrapper.
+  `~/.docker/config.json`) is supplied at runtime by the Go entrypoint.
 
 **You cannot expect:**
 
-- Remediation of `linux-libc-dev` (kernel-header) CVEs — they're `fixed=none`
-  upstream and **don't apply** to a container (it uses the host kernel). The scan
-  deliberately ignores unfixed findings for this reason.
+- Remediation of the `actions/runner` agent's **bundled** dependencies (its
+  vendored `node20`/`node24`, .NET libs) — they're identical on any base and
+  clear only when GitHub ships a newer agent.
+- A fix for CVEs whose Trivy-listed "fixed" version isn't actually shipped by the
+  Wolfi repo — these are held in [`.trivyignore`](.trivyignore) with a reason and
+  revisited when Wolfi rebuilds.
 - Hardening of the *workflows* that run on the runner, or of the host Docker
   daemon the runner talks to — those are the operator's responsibility.
 - A patched image for HIGH/MEDIUM CVEs faster than the weekly cadence (only

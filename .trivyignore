@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+#
+# Accepted (unfixable-by-us) findings. Each entry is a CVE whose Trivy-listed
+# "fixed" version is NOT actually shipped by the upstream repo, or is mis-matched
+# to a non-vulnerable subpackage. Revisit when upstream rebuilds.
+
+# CVE-2026-31789 — Trivy attributes an OpenSSL *library* CVE to the
+# `openssl-config` subpackage (config FILES only — no vulnerable code), and the
+# listed fix (3.6.2-r0) is not in the Wolfi repo (`apk upgrade` is a no-op; the
+# repo's newest openssl-config is the installed 3.3.0-r5). Remove once Wolfi
+# rebuilds openssl-config past the affected range.
+CVE-2026-31789
