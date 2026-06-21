@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 [![build](https://github.com/openserbia/github-runner/actions/workflows/build.yml/badge.svg)](https://github.com/openserbia/github-runner/actions/workflows/build.yml)
 [![lint](https://github.com/openserbia/github-runner/actions/workflows/lint.yml/badge.svg)](https://github.com/openserbia/github-runner/actions/workflows/lint.yml)
-[![image size](https://img.shields.io/badge/image%20size-454%20MiB-2496ed?logo=docker&logoColor=white)](https://github.com/openserbia/github-runner/pkgs/container/github-runner)
+[![image size](https://img.shields.io/badge/image%20size-455%20MiB-2496ed?logo=docker&logoColor=white)](https://github.com/openserbia/github-runner/pkgs/container/github-runner)
 [![Trivy: CRITICAL-gated](https://img.shields.io/badge/Trivy-CRITICAL--gated-1904da?logo=aqua&logoColor=white)](SECURITY.md)
 [![cosign: signed](https://img.shields.io/badge/cosign-signed-0a7bbb?logo=sigstore&logoColor=white)](#verify-an-image)
 [![SBOM: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX-26a269)](#verify-an-image)
