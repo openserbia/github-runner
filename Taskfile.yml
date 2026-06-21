@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+# https://taskfile.dev
+version: '3'
+
+vars:
+  IMAGE: ghcr.io/openserbia/github-runner
+  DATE:
+    sh: date -u +%Y%m%d
+  # Image ref that scan/sbom/smoke operate on. Defaults to the locally-built
+  # :latest; CI overrides it per arch leg, e.g.
+  # `task scan sbom smoke REF=$IMAGE:20260621-arm64`.
+  REF: '{{.IMAGE}}:latest'
+
+tasks:
+  build:
+    desc: Build the image (:latest and :DATE)
+    cmds:
+      - docker build -t {{.IMAGE}}:latest -t {{.IMAGE}}:{{.DATE}} .
+
+  scan:
+    desc: Trivy — fail on FIXABLE CRITICAL, report HIGH+CRITICAL
+    cmds:
+      # --ignore-unfixed: the Ubuntu base carries kernel-header CVEs in
+      # linux-libc-dev that are fixed=none and DON'T apply to a container (it
+      # uses the host kernel). Gating on those would make the build permanently
+      # red. So the gate fails only on CRITICALs that HAVE a fix — the actionable
+      # ones (e.g. the git-lfs Go-stdlib CVE the Dockerfile recompiles away).
+      - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed {{.REF}}
+      # Visibility report (non-gating) — fixable HIGH+CRITICAL.
+      - trivy image --severity HIGH,CRITICAL --ignore-unfixed {{.REF}}
+
+  sbom:
+    desc: Generate CycloneDX SBOM
+    cmds:
+      - syft {{.REF}} -o cyclonedx-json=sbom.cdx.json
+
+  smoke:
+    desc: Smoke-test the built image (runner binary + toolchain present & sane)
+    cmds:
+      - ./test/smoke.sh {{.REF}}
+
+  ci:
+    desc: build -> scan -> sbom -> smoke (no push)
+    cmds:
+      - task: build
+      - task: scan
+      - task: sbom
+      - task: smoke
+
+  default:
+    cmds:
+      - task -l

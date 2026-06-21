@@ -1,0 +1,147 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+name: build
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"   # weekly, Monday 05:23 UTC — ALWAYS rebuilds (see note)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # paths-ignore is scoped to `push` ONLY. GitHub never applies path filters to
+    # `schedule`/`workflow_dispatch`, so the weekly cron (which pulls a fresh
+    # myoung34 base + apt upgrade — the patch-delivery channel) and manual runs
+    # ALWAYS build. Everything below is doc/meta that cannot change the produced
+    # image or its scan/smoke gates, so a doc-only commit skips the matrix.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.idea/**'
+
+# Top-level read-only; write scopes (packages/id-token) are granted per-job to
+# only the jobs that push/sign — least privilege.
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false   # don't cancel a partway-pushed run
+
+env:
+  IMAGE: ghcr.io/openserbia/github-runner
+
+# Tooling (trivy, syft, cosign, go-task) comes from devbox.json via `devbox run`
+# on the self-hosted runners — NOT from marketplace tool-wrapper actions
+# (race-proof, nothing we don't control). Same philosophy as postgres-wolfi.
+#
+# Multi-arch:
+#   - `build`    fans out over arches (amd64/arm64). Each leg builds NATIVELY on
+#                a self-hosted runner of its arch — routed by GitHub's built-in
+#                X64 / ARM64 labels (amd64 -> AX41 pool, arm64 -> rpi pool) — so
+#                no buildx/QEMU. It scans + smokes on that real hardware, pushes
+#                a per-arch tag, then signs/attests it by digest. The scan/smoke
+#                gate the push, so a bad arch publishes nothing.
+#   - `manifest` stitches the two per-arch images into the public multi-arch
+#                lists (:latest rolling, :YYYYMMDD immutable) and signs the index.
+jobs:
+  setup:
+    # One shared date for the whole run so the arch legs and the manifest job
+    # can't disagree across a midnight-UTC rollover.
+    runs-on: [self-hosted, X64]
+    outputs:
+      date: ${{ steps.meta.outputs.date }}
+    steps:
+      - name: Compute date tag
+        id: meta
+        run: echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: setup
+    permissions:
+      contents: read       # checkout
+      packages: write      # push per-arch tag to GHCR
+      id-token: write      # cosign keyless OIDC
+    strategy:
+      fail-fast: false             # one arch failing must not abort the other
+      matrix:
+        arch: ["amd64", "arm64"]
+        include:
+          - arch: amd64
+            runner: X64
+          - arch: arm64
+            runner: ARM64
+    runs-on: [self-hosted, "${{ matrix.runner }}"]
+    env:
+      ARCH: ${{ matrix.arch }}
+      DATE: ${{ needs.setup.outputs.date }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
+      # Native single-arch build: the runner's hardware arch == matrix.arch, so a
+      # plain `docker build` already produces the correct arch (no buildx/QEMU).
+      # Tagged with an -ARCH suffix; the manifest job assembles these into the
+      # public :latest / :DATE multi-arch lists. --pull always refreshes the base.
+      - name: Build
+        run: docker build --pull -t "$IMAGE:$DATE-$ARCH" .
+
+      - name: Scan (CRITICAL gate) + SBOM + smoke
+        run: devbox run -- task scan sbom smoke REF="$IMAGE:$DATE-$ARCH"
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom-${{ matrix.arch }}
+          path: sbom.cdx.json
+          retention-days: 1
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push (per-arch tag)
+        run: docker push "$IMAGE:$DATE-$ARCH"
+
+      - name: Sign + attest per-arch (by digest, via devbox cosign)
+        run: |
+          DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$DATE-$ARCH")
+          echo "signing $DIGEST"
+          devbox run -- cosign sign --yes "$DIGEST"
+          devbox run -- cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$DIGEST"
+
+  manifest:
+    needs: [setup, build]
+    permissions:
+      contents: read
+      packages: write      # push manifest list to GHCR
+      id-token: write      # cosign sign index
+    # Both arch images must exist to assemble the list; if either build leg
+    # failed, imagetools create will error and no manifest is published.
+    if: ${{ !cancelled() && needs.setup.result == 'success' }}
+    runs-on: [self-hosted, X64]
+    env:
+      DATE: ${{ needs.setup.outputs.date }}
+    steps:
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Assemble the per-arch images into the public multi-arch manifest lists.
+      # Both the rolling and the dated tag point at the same OCI index.
+      - name: Create + push manifest lists
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:$DATE" \
+            "$IMAGE:$DATE-amd64" \
+            "$IMAGE:$DATE-arm64"
+
+      # Sign the index digest so `cosign verify :latest` (which resolves to the
+      # index) passes. Per-arch children were already signed + SBOM-attested.
+      - name: Sign manifest list (by digest, via devbox cosign)
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE:$DATE" --format '{{.Manifest.Digest}}')
+          echo "signing index $IMAGE@$DIGEST"
+          devbox run -- cosign sign --yes "$IMAGE@$DIGEST"

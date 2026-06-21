@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+
+version: 2
+updates:
+  # GitHub Actions used by the workflows (.github/workflows/*).
+  # Keeps the SHA-pins current; PRs land with the "ci" commit prefix.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # Base image referenced in the Dockerfile FROM.
+  # PRs land with the "build" commit prefix.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
