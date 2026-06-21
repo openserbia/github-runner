@@ -26,6 +26,13 @@ Published **multi-arch** to GHCR and **rebuilt weekly**:
 | amd64 | self-hosted `X64` runner |
 | arm64 | self-hosted `ARM64` runner |
 
+> **Why no `armv7`?** That's the ceiling, and Wolfi is the binding constraint.
+> The `actions/runner` agent *does* ship a 32-bit `linux-arm` (armv7) build, but
+> **Chainguard Wolfi publishes only `amd64` + `arm64`** — there's no `armv7`
+> `wolfi-base` to build `FROM`. Adding armv7 would mean dropping Wolfi for that
+> arch and reintroducing the kernel-header CVE noise this image exists to avoid,
+> so it's intentionally out.
+
 ```
 ghcr.io/openserbia/github-runner:latest             # rolling multi-arch (amd64 + arm64)
 ghcr.io/openserbia/github-runner@sha256:<digest>    # pin an immutable build (cosign-signed)
