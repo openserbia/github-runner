@@ -110,6 +110,14 @@ jobs:
       id-token: write      # cosign sign index
     runs-on: [self-hosted, X64]
     steps:
+      # Needed so devbox.json is present for `devbox run -- cosign` below — a
+      # self-hosted runner does NOT guarantee the build job's workspace persists
+      # to this job (it may run on a different runner of the pool).
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
