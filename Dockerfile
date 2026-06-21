@@ -45,10 +45,10 @@ ARG COMPOSE_VERSION=v5.1.4
 #  - tools workflows use (go-1.26, git, git-lfs, docker-cli, nodejs-${NODE_MAJOR})
 #  - bash/curl/xz/dumb-init/ca-certs for the entrypoint, downloads, devbox/Nix, TLS
 # Wolfi's rolling repo IS the patch-delivery channel, so versions are unpinned.
-# hadolint ignore=DL3018
 # gnutar (GNU tar, overrides busybox tar) + zstd: actions/cache invokes
 # `tar --posix` / zstd, which busybox tar can't do — without these, cache
 # save/restore fails on every job.
+# hadolint ignore=DL3018
 RUN apk add --no-cache \
       bash curl xz git jq yq gh gnutar zstd dumb-init ca-certificates-bundle \
       icu-libs krb5-libs openssl openssl-config zlib libstdc++ libgcc lttng-ust \
