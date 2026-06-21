@@ -105,7 +105,7 @@ jobs:
     # arch never yields a published multi-arch list.
     needs: build
     permissions:
-      contents: read
+      contents: write     # push the README image-size badge update
       packages: write      # push manifest list to GHCR
       id-token: write      # cosign sign index
     runs-on: [self-hosted, X64]
@@ -113,10 +113,11 @@ jobs:
       # Needed so devbox.json is present for `devbox run -- cosign` below — a
       # self-hosted runner does NOT guarantee the build job's workspace persists
       # to this job (it may run on a different runner of the pool).
+      # persist-credentials: true keeps the token for the badge-update push below.
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -136,3 +137,20 @@ jobs:
           DIGEST=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{.Manifest.Digest}}')
           echo "signing index $IMAGE@$DIGEST"
           devbox run -- cosign sign --yes "$IMAGE@$DIGEST"
+
+      # Keep the README image-size badge current: the amd64 compressed size
+      # (config + layers from its registry manifest), committed back with
+      # [skip ci] so it doesn't re-trigger this workflow. Cosmetic — never fails
+      # the build.
+      - name: Update README image-size badge
+        continue-on-error: true
+        run: |
+          bytes=$(docker manifest inspect "$IMAGE:latest-amd64" | jq '[.config.size] + [.layers[].size] | add')
+          human=$(awk -v b="$bytes" 'BEGIN{ m=b/1048576; if (m>=1024) printf "%.2f GiB", m/1024; else printf "%d MiB", m }')
+          enc=${human/ /%20}
+          sed -i -E "s#(badge/image%20size-)[^-]*(-2496ed)#\1${enc}\2#" README.md
+          if git diff --quiet -- README.md; then echo "image size unchanged ($human)"; exit 0; fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "docs(readme): image-size badge -> ${human} [skip ci]"
+          git push
