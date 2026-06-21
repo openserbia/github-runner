@@ -47,9 +47,9 @@ ARG COMPOSE_VERSION=v5.1.4
 # Wolfi's rolling repo IS the patch-delivery channel, so versions are unpinned.
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-      bash curl xz git jq dumb-init ca-certificates-bundle \
+      bash curl xz git jq yq gh dumb-init ca-certificates-bundle \
       icu-libs krb5-libs openssl openssl-config zlib libstdc++ libgcc lttng-ust \
-      go-1.26 git-lfs docker-cli "nodejs-${NODE_MAJOR}"
+      go-1.26 git-lfs docker-cli docker-cli-buildx "nodejs-${NODE_MAJOR}"
 
 # bash now exists → use it with pipefail so the curl|… downloads below fail fast.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

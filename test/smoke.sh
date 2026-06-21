@@ -22,6 +22,8 @@ echo "go toolchain...";        run 'go version'
 echo "node...";                run 'node --version'
 echo "go-task...";             run 'task --version'
 echo "docker compose plugin..."; run 'docker compose version'   # --version needs no daemon
+echo "docker buildx plugin...";  run 'docker buildx version'    # workflows build images via BuildKit
+echo "gh CLI...";                run 'gh --version'
 
 echo "Go registration entrypoint present + runs (fails fast without config)..."
 run 'test -x /usr/local/bin/runner-entrypoint'
