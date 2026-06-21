@@ -21,7 +21,22 @@ const (
 	patFile     = "/tmp/.github-pat" //nolint:gosec // path, not a credential
 	patFileMode = 0o600
 	dirMode     = 0o755
+	curlrcMode  = 0o644
 )
+
+// curlrc gives every `curl` in a job a stable, identifiable UA. The runner pool
+// shares NAT with the operator's home line, so a bare `curl/X` UA on our own
+// sites trips scraper-lab's tool-ua-blatant rule and self-bans the IP. A
+// dedicated runner UA (distinct from the operator's home-lab-ops) keeps the pool
+// identifiable in logs while staying clear of the `^curl/` ban. The old runner
+// image baked this into its Dockerfile; the Wolfi image doesn't, so the
+// entrypoint sets it.
+const curlrc = `user-agent = "open-serbia-gh-runner/1.0 (+https://www.izjava.rs; ops@izjava.rs)"
+connect-timeout = 10
+show-error
+remote-time
+proto-default = https
+`
 
 // SetupWorkflowAuth ports the old entrypoint-wrapper.sh: registry auth, git URL
 // rewrites for private repos, and Go private-module settings. Behaviour-identical
@@ -34,6 +49,14 @@ func SetupWorkflowAuth(ctx context.Context, cfg config.Config) error {
 		dst := filepath.Join(home, ".docker", "config.json")
 		if err := copyFile(src, dst); err != nil {
 			return fmt.Errorf("copy docker config: %w", err)
+		}
+	}
+
+	// Operator curl UA (see curlrc above) — avoids self-banning the home IP.
+	if home != "" {
+		//nolint:gosec // non-secret config; 0644 matches modules/shell/curl.nix
+		if err := os.WriteFile(filepath.Join(home, ".curlrc"), []byte(curlrc), curlrcMode); err != nil {
+			return fmt.Errorf("write curlrc: %w", err)
 		}
 	}
 
