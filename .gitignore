@@ -5,6 +5,11 @@ results.sarif
 hadolint
 *.tmp
 
+# Go: deps are resolved from go.mod/go.sum (module mode), not committed.
+# `go mod vendor` is a local convenience only.
+/vendor/
+/runner-entrypoint
+
 # IDE / local tooling state
 .idea/
 .devbox/

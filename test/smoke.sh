@@ -23,8 +23,16 @@ echo "node...";                run 'node --version'
 echo "go-task...";             run 'task --version'
 echo "docker compose plugin..."; run 'docker compose version'   # --version needs no daemon
 
-echo "entrypoint wrapper present + executable..."
-run 'test -x /entrypoint-wrapper.sh'
+echo "Go registration entrypoint present + runs (fails fast without config)..."
+run 'test -x /usr/local/bin/runner-entrypoint'
+# With no registration env it must exit non-zero with a clear config error,
+# proving the static binary actually executes in the image.
+out=$(docker run --rm --memory 1g --entrypoint /usr/local/bin/runner-entrypoint "$IMAGE" 2>&1 || true)
+echo "  $out"
+case "$out" in
+  *"ORG_NAME is required"*) ;;
+  *) echo "FAIL: entrypoint did not report expected config error; got: $out"; exit 1 ;;
+esac
 
 echo "git-lfs must be recompiled against patched Go (CVE-2025-68121 guard)..."
 glfs_line=$(run 'git-lfs version')

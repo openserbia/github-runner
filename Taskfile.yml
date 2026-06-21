@@ -38,6 +38,26 @@ tasks:
     cmds:
       - ./test/smoke.sh {{.REF}}
 
+  test:go:
+    desc: Run the Go entrypoint unit tests
+    cmds:
+      - go test ./...
+
+  lint:go:
+    desc: Run golangci-lint (the strict shared openserbia config)
+    cmds:
+      - golangci-lint run
+
+  fmt:go:
+    desc: Apply gci + gofumpt formatting
+    cmds:
+      - golangci-lint fmt
+
+  tidy:
+    desc: Tidy Go modules
+    cmds:
+      - go mod tidy
+
   ci:
     desc: build -> scan -> sbom -> smoke (no push)
     cmds:

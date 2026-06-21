@@ -1,8 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OpenSerbia
 # SPDX-License-Identifier: MIT
-# Ship NOTHING into the build context except what the Dockerfile COPYs.
-# The build references exactly one file (entrypoint-wrapper.sh); deny-all then
-# re-allow keeps the context tiny and makes it impossible for a stray
-# `COPY .`/`ADD` to bake .git, secrets, SBOMs, or IDE state into an image layer.
+# Ship NOTHING into the build context except what the Dockerfile COPYs: the Go
+# entrypoint sources (go.mod, go.sum, cmd/, internal/). Deps are fetched in the
+# builder via `go mod download` (module mode), so vendor/ is intentionally NOT
+# shipped. Deny-all then re-allow keeps the context tiny and makes it impossible
+# for a stray `COPY .`/`ADD` to bake .git, secrets, SBOMs, or IDE state into a layer.
 *
-!entrypoint-wrapper.sh
+!go.mod
+!go.sum
+!cmd
+!internal

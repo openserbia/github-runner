@@ -1,13 +1,34 @@
 # SPDX-FileCopyrightText: 2026 OpenSerbia
 # SPDX-License-Identifier: MIT
 # github-runner — myoung34/github-runner (Ubuntu Noble) + the openserbia CI
-# toolchain (Go, Node LTS, go-task, devbox, docker compose) and a git-auth
-# entrypoint wrapper. Published multi-arch (amd64 + arm64) so ONE weekly-rebuilt
-# image serves the whole self-hosted fleet.
+# toolchain (Go, Node LTS, go-task, devbox, docker compose) and a dependency-free
+# Go registration entrypoint (cmd/runner-entrypoint). Published multi-arch
+# (amd64 + arm64) so ONE weekly-rebuilt image serves the whole self-hosted fleet.
 #
 # :latest is deliberate — the weekly build pulls a fresh myoung34 base + apt
 # upgrade, which is the security-patch channel; pinning the base by digest here
 # would freeze out those rebuilds. Dependabot bumps the FROM via PR instead.
+
+# ---- entrypoint builder ----------------------------------------------------
+# Compiles the Go registration entrypoint to a static, dependency-free binary.
+# `go test` runs here too, so a test failure fails the image build (no separate
+# CI leg needed). netgo/osusergo + CGO_ENABLED=0 keep it static for a future
+# minimal (Phase-2) base; CGO_ENABLED is set inline because a Taskfile/env var
+# doesn't reliably reach `go build` inside Docker.
+# hadolint ignore=DL3006,DL3007
+FROM golang:1.26 AS entrypoint-build
+WORKDIR /src
+# Module mode: deps come from go.mod/go.sum (verified), not a committed vendor/.
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go vet ./... \
+ && CGO_ENABLED=0 go test ./... \
+ && CGO_ENABLED=0 go build -trimpath -tags netgo,osusergo -ldflags="-s -w" \
+    -o /runner-entrypoint ./cmd/runner-entrypoint
+
+# ---- runtime ---------------------------------------------------------------
 # hadolint ignore=DL3007
 FROM myoung34/github-runner:ubuntu-noble
 
@@ -77,10 +98,13 @@ RUN go install github.com/git-lfs/git-lfs/v3@v3.7.1 \
     done \
  && rm -rf "$(go env GOPATH)/bin/git-lfs" "$(go env GOPATH)/pkg" "$(go env GOCACHE)"
 
-# git-auth entrypoint wrapper — configures git URL rewrites + Go private-module
-# settings from GITHUB_PAT at runtime, then hands off to the base entrypoint.
-COPY entrypoint-wrapper.sh /entrypoint-wrapper.sh
-RUN chmod +x /entrypoint-wrapper.sh
+# Go registration entrypoint — replaces myoung34's bash registration AND the old
+# entrypoint-wrapper.sh: sets up git/registry/Go-module auth, JIT-registers an
+# ephemeral runner via the GitHub API, then execs the agent's run.sh (so signals
+# reach the runner directly). See cmd/runner-entrypoint. No CMD: the binary
+# chooses how to launch the agent.
+COPY --from=entrypoint-build /runner-entrypoint /usr/local/bin/runner-entrypoint
 
-ENTRYPOINT ["/entrypoint-wrapper.sh"]
-CMD ["./bin/Runner.Listener", "run", "--startuptype", "service"]
+# dumb-init (from the base) stays PID 1 so job subprocess zombies are reaped and
+# signals are forwarded — matching the base's own `dumb-init … Runner.Listener`.
+ENTRYPOINT ["/usr/bin/dumb-init", "/usr/local/bin/runner-entrypoint"]

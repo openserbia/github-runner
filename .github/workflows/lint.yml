@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: ShellCheck
-        run: shellcheck test/*.sh entrypoint-wrapper.sh
+        run: shellcheck test/*.sh
 
       - name: hadolint
         # Pinned hadolint release binary, run directly against the Dockerfile.
@@ -43,3 +43,22 @@ jobs:
             https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           chmod +x hadolint
           ./hadolint ./Dockerfile
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
+      # Install devbox with its official script — the same way the Dockerfile does
+      # — NOT a marketplace action. devbox auto-installs Nix on first run and
+      # provisions go + golangci-lint from devbox.json/devbox.lock, the single
+      # source of truth shared with build.yml. Avoids setup-go / golangci-lint
+      # actions that would pin Go and golangci-lint a second time and drift.
+      - name: Install devbox
+        run: curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
+
+      - name: Test + lint
+        run: devbox run -- task test:go lint:go
