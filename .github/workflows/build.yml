@@ -145,7 +145,12 @@ jobs:
       - name: Update README image-size badge
         continue-on-error: true
         run: |
-          bytes=$(docker manifest inspect "$IMAGE:latest-amd64" | jq '[.config.size] + [.layers[].size] | add')
+          # latest-amd64 is an OCI index (buildkit wraps single-platform images +
+          # an attestation manifest), so resolve the amd64 image manifest first,
+          # then sum its config + layer (compressed) sizes.
+          digest=$(docker manifest inspect "$IMAGE:latest-amd64" \
+            | jq -r '.manifests[] | select(.platform.architecture=="amd64" and .platform.os=="linux") | .digest')
+          bytes=$(docker manifest inspect "$IMAGE@$digest" | jq '[.config.size] + [.layers[].size] | add')
           human=$(awk -v b="$bytes" 'BEGIN{ m=b/1048576; if (m>=1024) printf "%.2f GiB", m/1024; else printf "%d MiB", m }')
           enc=${human/ /%20}
           sed -i -E "s#(badge/image%20size-)[^-]*(-2496ed)#\1${enc}\2#" README.md
