@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+name: lint
+
+on:
+  push:
+    branches: [main]
+    # paths-ignore on push ONLY. pull_request stays unfiltered so every PR is
+    # always linted — keeps `lint` safe as a required status check.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.idea/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Linters run as plain CLIs (shellcheck preinstalled; hadolint by pinned release
+# URL) — fewer third-party actions, nothing we don't control.
+jobs:
+  lint:
+    runs-on: ubuntu-latest   # GitHub-hosted — NOT a self-hosted runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: ShellCheck
+        run: shellcheck test/*.sh entrypoint-wrapper.sh
+
+      - name: hadolint
+        # Pinned hadolint release binary, run directly against the Dockerfile.
+        run: |
+          curl -fsSL -o hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x hadolint
+          ./hadolint ./Dockerfile

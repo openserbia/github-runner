@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+# Ship NOTHING into the build context except what the Dockerfile COPYs.
+# The build references exactly one file (entrypoint-wrapper.sh); deny-all then
+# re-allow keeps the context tiny and makes it impossible for a stray
+# `COPY .`/`ADD` to bake .git, secrets, SBOMs, or IDE state into an image layer.
+*
+!entrypoint-wrapper.sh
