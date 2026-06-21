@@ -120,6 +120,41 @@ Point each host's `docker-compose.yml` at `ghcr.io/openserbia/github-runner`
 instead of a locally-built tag. The runner name/labels, replica count, and host
 mounts stay in your own deployment config — this image is the **generic** runtime.
 
+```yaml
+services:
+  github-runner:
+    image: ghcr.io/openserbia/github-runner:latest
+    # Ephemeral by construction: the Go entrypoint JIT-registers, runs ONE job,
+    # exits, and `restart` re-registers a fresh runner. No EPHEMERAL flag needed.
+    restart: unless-stopped
+    environment:
+      ORG_NAME: your-org                  # required — org the runner joins
+      RUNNER_SCOPE: org                   # required — only org scope is supported
+      RUNNER_NAME: runner-1               # required — unique per replica
+      RUNNER_LABELS: self-hosted-x64,docker  # required — your custom labels
+      ACCESS_TOKEN: ${ACCESS_TOKEN}       # required — PAT with org runner-admin (registers + replaces)
+      GITHUB_PAT: ${GITHUB_PAT}           # optional — git/Go-module auth for private repos
+      # RUNNER_GROUP_ID: "1"              # optional — runner group (default: Default group)
+      # LOG_LEVEL: info                   # optional — zerolog level
+      # Talk to the HOST Docker daemon for `docker build` / compose in jobs:
+      DOCKER_HOST: unix:///host-run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # DIRECTORY mount of host /run (NOT the socket file) so the runner survives
+      # a dockerd restart; the agent connects to /host-run/docker.sock.
+      - /run:/host-run:ro
+      - runner-work:/actions-runner/_work
+
+volumes:
+  runner-work:
+```
+
+Put the secrets (`ACCESS_TOKEN`, `GITHUB_PAT`) in an `.env` file or your secret
+store — never in the compose file. Run N replicas by giving each a distinct
+`RUNNER_NAME`. `ACCESS_TOKEN` needs the org **self-hosted-runners** admin scope;
+`GITHUB_PAT` only needs read access to the private repos your jobs pull.
+
 Pull image refreshes on a **drain-aware** schedule (recreate a replica only when
 it's idle — recreating a runner mid-job kills that job), not via naive Watchtower.
 
