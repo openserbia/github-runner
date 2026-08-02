@@ -15,6 +15,14 @@
 # :latest is deliberate — wolfi-base is daily-patched; pinning the base by digest
 # would freeze out those patches. Dependabot bumps the FROM via PR instead.
 
+# The GitHub runner archive ships two separate npm trees (for its bundled node20
+# and node24 runtimes). Build a small, lockfile-pinned replacement for `tar` so
+# CVE-2026-59873 cannot persist until GitHub republishes the runner archive.
+FROM node:24-alpine AS runner-tar-build
+WORKDIR /deps
+COPY runner-tar/package.json runner-tar/package-lock.json ./
+RUN npm ci --ignore-scripts --install-strategy=nested
+
 # ---- entrypoint builder ----------------------------------------------------
 # Compiles the Go registration entrypoint to a static, dependency-free binary
 # (`go test`/`go vet` run here too, so a failure fails the image build).
@@ -34,7 +42,7 @@ RUN CGO_ENABLED=0 go vet ./... \
 FROM cgr.dev/chainguard/wolfi-base:latest
 
 # Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
-ARG RUNNER_VERSION=2.335.1
+ARG RUNNER_VERSION=2.336.0
 ARG NODE_MAJOR=24
 ARG TASK_VERSION=v3.51.1
 ARG COMPOSE_VERSION=v5.1.4
@@ -79,6 +87,16 @@ RUN case "$(uname -m)" in \
  && mkdir -p /actions-runner \
  && curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz" \
     | tar -C /actions-runner -xz
+
+# GitHub's runner archive v2.336.0 bundles vulnerable tar 6.2.1 (node20) and
+# 7.5.15 (node24). Replace only those dependency trees with the locked 7.5.19
+# module and its nested dependencies; the runner binaries and bundled npm stay
+# otherwise byte-for-byte upstream.
+RUN rm -rf \
+      /actions-runner/externals/node20/lib/node_modules/npm/node_modules/tar \
+      /actions-runner/externals/node24/lib/node_modules/npm/node_modules/tar
+COPY --from=runner-tar-build /deps/node_modules/tar /actions-runner/externals/node20/lib/node_modules/npm/node_modules/tar
+COPY --from=runner-tar-build /deps/node_modules/tar /actions-runner/externals/node24/lib/node_modules/npm/node_modules/tar
 
 # Go JIT-registration entrypoint — replaces myoung34's bash registration: sets up
 # git/registry/Go-module auth, JIT-registers an ephemeral runner (replacing a

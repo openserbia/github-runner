@@ -20,6 +20,15 @@ run './bin/Runner.Listener --version'
 
 echo "go toolchain...";        run 'go version'
 echo "node...";                run 'node --version'
+echo "patched bundled tar..."
+run '
+  for path in \
+    /actions-runner/externals/node20/lib/node_modules/npm/node_modules/tar \
+    /actions-runner/externals/node24/lib/node_modules/npm/node_modules/tar; do
+    test "$(jq -r .version "$path/package.json")" = "7.5.19"
+    node -e "const tar=require(\"$path\"); if (typeof tar.x !== \"function\") process.exit(1)"
+  done
+'
 echo "go-task...";             run 'task --version'
 echo "docker compose plugin..."; run 'docker compose version'   # --version needs no daemon
 echo "docker buildx plugin...";  run 'docker buildx version'    # workflows build images via BuildKit

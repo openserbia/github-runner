@@ -10,3 +10,4 @@
 !go.sum
 !cmd
 !internal
+!runner-tar
