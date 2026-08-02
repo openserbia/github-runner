@@ -21,6 +21,8 @@ run './bin/Runner.Listener --version'
 echo "go toolchain...";        run 'go version'
 echo "node...";                run 'node --version'
 echo "patched bundled tar..."
+# shellcheck disable=SC2016  # $path and $(jq ...) must expand in the CONTAINER's
+# shell, not here — run() forwards "$1" verbatim to `bash -c` inside the image.
 run '
   for path in \
     /actions-runner/externals/node20/lib/node_modules/npm/node_modules/tar \
