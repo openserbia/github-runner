@@ -18,7 +18,7 @@
 # The GitHub runner archive ships two separate npm trees (for its bundled node20
 # and node24 runtimes). Build a small, lockfile-pinned replacement for `tar` so
 # CVE-2026-59873 cannot persist until GitHub republishes the runner archive.
-FROM node:24-alpine AS runner-tar-build
+FROM node:26-alpine AS runner-tar-build
 WORKDIR /deps
 COPY runner-tar/package.json runner-tar/package-lock.json ./
 RUN npm ci --ignore-scripts --install-strategy=nested
