@@ -6,6 +6,6 @@
     "syft": "latest",
     "cosign": "latest",
     "go": "1.27",
-    "golangci-lint": "latest"
+    "github:openserbia/go-flake#golangci-lint_2_13_1": ""
   }
 }
