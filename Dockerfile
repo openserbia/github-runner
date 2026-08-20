@@ -26,7 +26,7 @@ RUN npm ci --ignore-scripts --install-strategy=nested
 # ---- entrypoint builder ----------------------------------------------------
 # Compiles the Go registration entrypoint to a static, dependency-free binary
 # (`go test`/`go vet` run here too, so a failure fails the image build).
-FROM golang:1.26 AS entrypoint-build
+FROM golang:1.27 AS entrypoint-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
