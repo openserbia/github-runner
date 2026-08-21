@@ -1,0 +1,41 @@
+# Secret scanning config. `task security:secrets` runs gitleaks over the
+# working tree and over git history; this file only narrows where it looks.
+#
+# Source of truth: openserbia/go-template/.gitleaks.toml. Copy verbatim into
+# every repo and append a REPO OVERRIDES block at the bottom for findings
+# verified as non-credentials in that repo.
+#
+# Use [[allowlists]] (plural), never the deprecated singular [allowlist]:
+# gitleaks refuses to load a config that mixes the two, so a repo appending an
+# override to a singular baseline fails closed with "Failed to load config".
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Paths that are not this repository's source"
+# Patterns match the path relative to the repo root and are deliberately NOT
+# anchored with ^: several repos are monorepos where the same trees appear one
+# level down (svc/vendor/, dash/build/, web/node_modules/). Anchoring these to
+# the root let 80+ vendored and build-output findings through in izjava.rs.
+paths = [
+  # Real credentials live here by design, and it is gitignored for that
+  # reason. Scanning it turns every local run red for a secret that was never
+  # going anywhere. .env.example is scanned as normal, since it is committed,
+  # and the `git` pass still reports a .env that was ever committed.
+  '''(^|/)\.env$''',
+  '''(^|/)\.env\.local$''',
+  # Vendored dependencies: other people's test fixtures, and a rewrite away
+  # from anything we could fix.
+  '''(^|/)vendor/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.venv/''',
+  # Build output, generated clients, caches and tool state.
+  '''(^|/)build/''',
+  '''(^|/)dist/''',
+  '''(^|/)\.svelte-kit/''',
+  '''(^|/)\.devbox/''',
+  '''(^|/)\.task/''',
+  '''(^|/)\.trivycache/''',
+  '''(^|/)\.idea/''',
+  '''(^|/)\.code-review-graph/''',
+]

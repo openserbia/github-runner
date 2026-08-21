@@ -11,6 +11,22 @@ vars:
   REF: '{{.IMAGE}}:latest'
 
 tasks:
+  secrets:
+    desc: Scan the working tree and git history for committed credentials
+    # Two passes, because they answer different questions: `dir` catches a
+    # secret on its way into a commit, `git` catches one that is already in
+    # history and was later deleted: removing the line does not remove the
+    # blob.
+    #
+    # No sources/generates: the history pass depends on commits, which change
+    # without any tracked file changing, so a cached "up to date" would lie.
+    #
+    # .gitleaks.toml allowlists .env, vendor/ and the build/cache trees;
+    # everything else, untracked files included, is scanned.
+    cmds:
+      - gitleaks dir . --redact --no-banner --verbose
+      - gitleaks git --redact --no-banner --verbose
+
   build:
     desc: Build the image (:latest)
     cmds:
