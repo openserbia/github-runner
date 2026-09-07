@@ -44,8 +44,8 @@ FROM cgr.dev/chainguard/wolfi-base:latest
 # Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
 ARG RUNNER_VERSION=2.336.0
 ARG NODE_MAJOR=24
-ARG TASK_VERSION=v3.51.1
-ARG COMPOSE_VERSION=v5.1.4
+ARG TASK_VERSION=v3.53.1
+ARG COMPOSE_VERSION=v5.5.1
 
 # Runtime deps, installed first with the default /bin/sh (wolfi-base has no bash):
 #  - native libs the bundled .NET runner loads (icu/krb5/openssl/zlib/lttng-ust/
