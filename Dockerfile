@@ -50,7 +50,7 @@ ARG COMPOSE_VERSION=v5.5.1
 # Runtime deps, installed first with the default /bin/sh (wolfi-base has no bash):
 #  - native libs the bundled .NET runner loads (icu/krb5/openssl/zlib/lttng-ust/
 #    libstdc++/libgcc)
-#  - tools workflows use (go-1.26, git, git-lfs, docker-cli, nodejs-${NODE_MAJOR})
+#  - tools workflows use (go-1.27, git, git-lfs, docker-cli, nodejs-${NODE_MAJOR})
 #  - bash/curl/xz/dumb-init/ca-certs for the entrypoint, downloads, devbox/Nix, TLS
 # Wolfi's rolling repo IS the patch-delivery channel, so versions are unpinned.
 # gnutar (GNU tar, overrides busybox tar) + zstd: actions/cache invokes
@@ -60,7 +60,7 @@ ARG COMPOSE_VERSION=v5.5.1
 RUN apk add --no-cache \
       bash curl xz git jq yq gh gnutar zstd dumb-init ca-certificates-bundle \
       icu-libs krb5-libs openssl openssl-config zlib libstdc++ libgcc lttng-ust \
-      go-1.26 git-lfs docker-cli docker-cli-buildx "nodejs-${NODE_MAJOR}"
+      "go-1.27>=1.27.2" git-lfs docker-cli docker-cli-buildx "nodejs-${NODE_MAJOR}"
 
 # bash now exists → use it with pipefail so the curl|… downloads below fail fast.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
