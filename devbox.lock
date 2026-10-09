@@ -53,9 +53,13 @@
       "last_modified": "2026-06-16T10:57:20Z",
       "resolved": "github:NixOS/nixpkgs/3e41b24abd260e8f71dbe2f5737d24122f972158?lastModified=1781607440&narHash=sha256-rxO%2Buc%2FKFbSJp%2BpgyXRuAX6QlG9hJdnt0BXpEQRXY%2BU%3D"
     },
-    "github:openserbia/go-flake#golangci-lint_2_13_1": {
-      "last_modified": "2026-08-20T17:28:17Z",
-      "resolved": "github:openserbia/go-flake/a940a206b47227f54e7286f5eb77f70e67d20635?lastModified=1787246897&narHash=sha256-Pw3Y3B9noJmPqoV%2FSvFrC3UO32CCHswiSrM7e7a7a70%3D#golangci-lint_2_13_1"
+    "github:openserbia/go-flake#go_1_27_2": {
+      "last_modified": "2026-10-09T12:41:41Z",
+      "resolved": "github:openserbia/go-flake/bd367114832598916682868cdf78f65e10b3c81f?lastModified=1791549701&narHash=sha256-KxKqG9b1%2FAmWRF%2FLKoMQ7ML1GR6WRWLKCTfB%2BmXtn7E%3D#go_1_27_2"
+    },
+    "github:openserbia/go-flake#golangci-lint_2_14_0": {
+      "last_modified": "2026-10-09T12:41:41Z",
+      "resolved": "github:openserbia/go-flake/bd367114832598916682868cdf78f65e10b3c81f?lastModified=1791549701&narHash=sha256-KxKqG9b1%2FAmWRF%2FLKoMQ7ML1GR6WRWLKCTfB%2BmXtn7E%3D#golangci-lint_2_14_0"
     },
     "go-task@latest": {
       "last_modified": "2026-05-21T08:15:18Z",
@@ -102,44 +106,6 @@
             }
           ],
           "store_path": "/nix/store/ajlbzd5gnxrs1yki1sjf327rjx7qq060-go-task-3.48.0"
-        }
-      }
-    },
-    "go@1.27": {
-      "last_modified": "2026-08-14T06:48:10Z",
-      "resolved": "github:NixOS/nixpkgs/f2b17eb1b90f6a359082035b4538d4c63017aec3#go_1_27",
-      "source": "devbox-search",
-      "version": "1.27rc3",
-      "systems": {
-        "aarch64-darwin": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/80vk2mcdx8p127r99c11qwkx6g6159bl-go-1.27rc3",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/80vk2mcdx8p127r99c11qwkx6g6159bl-go-1.27rc3"
-        },
-        "aarch64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/bqwp6fhbnkxggxn41pnhzbbf6lajzbzp-go-1.27rc3",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/bqwp6fhbnkxggxn41pnhzbbf6lajzbzp-go-1.27rc3"
-        },
-        "x86_64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/1176al34sx5csv3grv6nghmyzjs52y0z-go-1.27rc3",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/1176al34sx5csv3grv6nghmyzjs52y0z-go-1.27rc3"
         }
       }
     },

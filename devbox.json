@@ -5,7 +5,7 @@
     "trivy": "latest",
     "syft": "latest",
     "cosign": "latest",
-    "go": "1.27",
-    "github:openserbia/go-flake#golangci-lint_2_13_1": ""
+    "github:openserbia/go-flake#go_1_27_2": "",
+    "github:openserbia/go-flake#golangci-lint_2_14_0": ""
   }
 }
