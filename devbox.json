@@ -7,6 +7,7 @@
     "syft": "latest",
     "cosign": "latest",
     "github:openserbia/go-flake#go_1_27_2": "",
-    "github:openserbia/go-flake#golangci-lint_2_14_0": ""
+    "github:openserbia/go-flake#golangci-lint_2_15_0": "",
+    "github:openserbia/go-flake#govulncheck_1_9_0": ""
   }
 }

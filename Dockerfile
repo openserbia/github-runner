@@ -26,13 +26,18 @@ RUN npm ci --ignore-scripts --install-strategy=nested
 # ---- entrypoint builder ----------------------------------------------------
 # Compiles the Go registration entrypoint to a static, dependency-free binary
 # (`go test`/`go vet` run here too, so a failure fails the image build).
+# Cache mounts keep the module and build caches across builds without baking
+# them into a layer (GOPATH is /go in the golang image, HOME is /root).
 FROM golang:1.27.2 AS entrypoint-build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go vet ./... \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go vet ./... \
  && CGO_ENABLED=0 go test ./... \
  && CGO_ENABLED=0 go build -trimpath -tags netgo,osusergo -ldflags="-s -w" \
     -o /runner-entrypoint ./cmd/runner-entrypoint
