@@ -61,10 +61,13 @@ ARG COMPOSE_VERSION=v5.5.1
 # gnutar (GNU tar, overrides busybox tar) + zstd: actions/cache invokes
 # `tar --posix` / zstd, which busybox tar can't do — without these, cache
 # save/restore fails on every job.
+# No openssl-config: Wolfi's openssl now resolves to openssl-4.0, which ships
+# /etc/ssl/openssl.cnf itself, and the separate openssl-config (3.3) package
+# conflicts with its files, failing every build since 2026-10-09.
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
       bash curl xz git jq yq gh gnutar zstd dumb-init ca-certificates-bundle \
-      icu-libs krb5-libs openssl openssl-config zlib libstdc++ libgcc lttng-ust \
+      icu-libs krb5-libs openssl zlib libstdc++ libgcc lttng-ust \
       "go-1.27>=1.27.2" git-lfs docker-cli docker-cli-buildx "nodejs-${NODE_MAJOR}"
 
 # bash now exists → use it with pipefail so the curl|… downloads below fail fast.
