@@ -69,7 +69,7 @@ func Load() (Config, error) {
 	// `runs-on: [self-hosted, ...]` job never matches the runner.
 	raw := getenv("RUNNER_LABELS", os.Getenv("LABELS"))
 	var custom []string
-	for _, label := range strings.Split(raw, ",") {
+	for label := range strings.SplitSeq(raw, ",") {
 		if label = strings.TrimSpace(label); label != "" {
 			custom = append(custom, label)
 		}
