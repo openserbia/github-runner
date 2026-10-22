@@ -18,21 +18,28 @@ run() { docker run --rm --memory 1g --entrypoint bash "$IMAGE" -c "$1"; }
 echo "runner binary..."
 run './bin/Runner.Listener --version'
 
-echo "go toolchain...";        run 'go version'
-echo "node...";                run 'node --version'
-echo "patched bundled tar..."
-# shellcheck disable=SC2016  # $path and $(jq ...) must expand in the CONTAINER's
-# shell, not here — run() forwards "$1" verbatim to `bash -c` inside the image.
+# node/npm/npx on PATH are links to the runner's node24 (the official Node
+# build the Dockerfile swaps in). It runs every JS action: node20 is pruned, and
+# FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 sends node20 actions to it.
+echo "node...";                run 'node --version && npm --version && test ! -e /actions-runner/externals/node20'
+# Floors, not exact pins, so a NODE_VERSION bump needs no edit here: Node 24 at
+# or past the 24.22.1 security release, and npm's bundled tar at or past 7.5.22
+# (CVE-2026-59873). Raise them when a newer fix must not regress.
+echo "node24 + npm tar at or past their security floors..."
+# shellcheck disable=SC2016  # $path must expand in the CONTAINER's shell, not
+# here — run() forwards "$1" verbatim to `bash -c` inside the image.
 run '
-  for path in \
-    /actions-runner/externals/node20/lib/node_modules/npm/node_modules/tar \
-    /actions-runner/externals/node24/lib/node_modules/npm/node_modules/tar; do
-    test "$(jq -r .version "$path/package.json")" = "7.5.19"
-    node -e "const tar=require(\"$path\"); if (typeof tar.x !== \"function\") process.exit(1)"
-  done
+  path=/actions-runner/externals/node24/lib/node_modules/npm/node_modules/tar
+  node -e "
+    const ge = (v, min) => { const a = v.split(\".\").map(Number), b = min.split(\".\").map(Number);
+      for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i]; return true; };
+    const node = process.versions.node, tar = require(\"$path/package.json\").version;
+    console.log(\"node\", node, \"tar\", tar);
+    if (!node.startsWith(\"24.\") || !ge(node, \"24.22.1\") || !ge(tar, \"7.5.22\")) process.exit(1);
+    if (typeof require(\"$path\").x !== \"function\") process.exit(1);
+  "
 '
-echo "go-task...";             run 'task --version'
-echo "docker compose plugin..."; run 'docker compose version'   # --version needs no daemon
+echo "libssl.so.3 for .NET..."; run 'test -e /usr/lib/libssl.so.3'
 echo "docker buildx plugin...";  run 'docker buildx version'    # workflows build images via BuildKit
 echo "gh CLI...";                run 'gh --version'
 # actions/cache shells out to `tar --posix` + zstd; busybox tar breaks it.

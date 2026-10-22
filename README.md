@@ -13,11 +13,15 @@ SPDX-License-Identifier: MIT
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 A self-hosted **GitHub Actions runner** on **[Chainguard Wolfi](https://github.com/wolfi-dev)**
-(glibc, daily-patched, minimal) — the `actions/runner` agent plus the CI toolchain
-our workflows expect (**Go, Node LTS, go-task, devbox, docker compose**) and a
+(glibc, daily-patched, minimal) — the `actions/runner` agent plus the tools our
+workflows call directly (**devbox, docker CLI + buildx, git/git-lfs, gh, jq**) and a
 small **Go entrypoint** (layered `internal/` packages, zerolog logging) that
 JIT-registers an ephemeral runner. No `myoung34`/Ubuntu base: the Go entrypoint
 replaced its bash registration, so we assemble the runner directly on Wolfi.
+
+The image ships **no Go, go-task or docker compose**: jobs run their toolchain
+through the repo's own `devbox.json` (`devbox run -- task ...`), which pins the
+versions per repo. `node`/`npm` on `PATH` are the runner's bundled node24.
 
 Published **multi-arch** to GHCR and **rebuilt weekly**:
 
