@@ -39,12 +39,43 @@ RUN --mount=type=cache,target=/go/pkg/mod \
  && CGO_ENABLED=0 go build -trimpath -tags netgo,osusergo -ldflags="-s -w" \
     -o /runner-entrypoint ./cmd/runner-entrypoint
 
+# ---- devbox builder --------------------------------------------------------
+# devbox from source with the patched Go above. Its release binaries lag Go
+# security fixes (0.18.4 ships Go 1.26.1, with a stack of stdlib HIGHs), and
+# get.jetify.com installs only a launcher that downloads that binary, unverified,
+# on first use: in an ephemeral container, on every job. The clone is checked
+# against the tag's commit; devbox's go.sum (via the checksum DB) verifies deps.
+# Telemetry/Sentry keys from upstream's goreleaser config are deliberately unset.
+FROM golang:1.27.3 AS devbox-build
+ARG DEVBOX_VERSION=0.18.4
+ARG DEVBOX_COMMIT=ed729044dcdaaa379c3ac98a64efc2d68ba97c76
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch "${DEVBOX_VERSION}" \
+      https://github.com/jetify-com/devbox /src \
+ && test "$(git -C /src rev-parse HEAD)" = "${DEVBOX_COMMIT}"
+# Dependency overrides for fixes devbox's go.mod hasn't picked up yet (Trivy-
+# reported). Drop each once a DEVBOX_VERSION bump includes it.
+ARG DEVBOX_DEP_OVERRIDES="golang.org/x/text@v0.43.0"
+WORKDIR /src
+# DL3062: each override carries its @version inside the ARG.
+# hadolint ignore=DL3062
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    GOTOOLCHAIN=local go get ${DEVBOX_DEP_OVERRIDES} \
+ && GOTOOLCHAIN=local CGO_ENABLED=0 go build -trimpath \
+      -ldflags="-s -w -X go.jetify.com/devbox/internal/build.Version=${DEVBOX_VERSION}" \
+      -o /devbox ./cmd/devbox
+
 # ---- runtime ---------------------------------------------------------------
 # hadolint ignore=DL3007
 FROM cgr.dev/chainguard/wolfi-base:latest
 
 # Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
+# Each download below is SHA-256 checked (devbox: commit-pinned, above). .github/workflows/bump.yml keeps these
+# ARGs (versions + digests) current; bump them together by hand otherwise.
 ARG RUNNER_VERSION=2.338.0
+# From the release notes' "SHA-256 Checksums" block.
+ARG RUNNER_SHA256_X64=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
+ARG RUNNER_SHA256_ARM64=628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b
 # Node 24 that runs every JS action, replacing the runner's bundled node24 (see
 # the runner RUN below). Stays on 24: the runner has no node26 handler.
 ARG NODE_VERSION=24.22.1
@@ -69,8 +100,12 @@ ARG NODE_VERSION=24.22.1
 # No openssl-config: Wolfi's openssl now resolves to openssl-4.0, which ships
 # /etc/ssl/openssl.cnf itself, and the separate openssl-config (3.3) package
 # conflicts with its files, failing every build since 2026-10-09.
-# hadolint ignore=DL3018
-RUN apk add --no-cache \
+# apk upgrade first: packages already in the wolfi-base layer (e.g.
+# ca-certificates-bundle) otherwise keep the base image's build, even when the
+# repo already ships a fix.
+# hadolint ignore=DL3017,DL3018
+RUN apk upgrade --no-cache \
+ && apk add --no-cache \
       bash curl xz git jq gh gnutar zstd dumb-init ca-certificates-bundle \
       krb5-libs openssl libssl3 zlib libstdc++ libgcc lttng-ust libicu78 \
       git-lfs docker-cli docker-cli-buildx mount
@@ -78,8 +113,9 @@ RUN apk add --no-cache \
 # bash now exists → use it with pipefail so the curl|… downloads below fail fast.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# devbox (binary only; Nix provisions on first `devbox run` inside a workflow).
-RUN curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
+# devbox (built above; Nix provisions on the first `devbox run` in a workflow,
+# into the persistent /nix volume).
+COPY --from=devbox-build /devbox /usr/local/bin/devbox
 
 # actions/runner agent (arch-aware: x64 / arm64). Bundles its own .NET + nodes.
 # Pruned in the same layer (a later RUN rm would not shrink the image):
@@ -90,19 +126,23 @@ RUN curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
 #    daemon, where /actions-runner does not exist, so they are unreachable here.
 #  - node24: swapped for the official NODE_VERSION build (SHA-256 checked
 #    against nodejs.org's SHASUMS256). Runner releases lag Node security
-#    releases by weeks (v2.338.0 bundles 24.21.0, 24.22.1 is a security fix),
-#    and the official build's npm carries current deps (e.g. a patched tar),
-#    so neither waits for GitHub to republish the runner.
+#    releases by weeks (runner 2.338.0 shipped 24.21.0, behind security release
+#    24.22.1); bump.yml tracks the newest 24.x. The official build's npm also
+#    carries current deps (e.g. a patched tar), so neither waits for GitHub to
+#    republish the runner.
 #  - node24/include + docs: C headers for native addons, never used at runtime.
 #  - node24 is linked onto PATH as node/npm/npx for ad-hoc `run:` steps.
 RUN case "$(uname -m)" in \
-      x86_64) rarch=x64 ;; \
-      aarch64) rarch=arm64 ;; \
+      x86_64) rarch=x64 rsum="${RUNNER_SHA256_X64}" ;; \
+      aarch64) rarch=arm64 rsum="${RUNNER_SHA256_ARM64}" ;; \
       *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
     esac \
  && mkdir -p /actions-runner \
- && curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz" \
-    | tar -C /actions-runner -xz \
+ && runner_tgz="actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz" \
+ && curl -fsSLO "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${runner_tgz}" \
+ && echo "${rsum}  ${runner_tgz}" | sha256sum -c - \
+ && tar -C /actions-runner -xzf "${runner_tgz}" \
+ && rm "${runner_tgz}" \
  && rm -rf \
       /actions-runner/externals/node20 \
       /actions-runner/externals/node20_alpine \

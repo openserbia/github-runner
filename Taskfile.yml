@@ -35,11 +35,9 @@ tasks:
   scan:
     desc: Trivy — fail on FIXABLE CRITICAL, report HIGH+CRITICAL
     cmds:
-      # --ignore-unfixed: the Ubuntu base carries kernel-header CVEs in
-      # linux-libc-dev that are fixed=none and DON'T apply to a container (it
-      # uses the host kernel). Gating on those would make the build permanently
-      # red. So the gate fails only on CRITICALs that HAVE a fix — the actionable
-      # ones (e.g. the git-lfs Go-stdlib CVE the Dockerfile recompiles away).
+      # --ignore-unfixed: gate only on CRITICALs that HAVE a fix, the
+      # actionable ones. Unfixable findings (e.g. in the runner's bundled .NET,
+      # which only a new runner release fixes) would keep the build red forever.
       - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed --ignorefile .trivyignore {{.REF}}
       # Visibility report (non-gating) — fixable HIGH+CRITICAL.
       - trivy image --severity HIGH,CRITICAL --ignore-unfixed --ignorefile .trivyignore {{.REF}}

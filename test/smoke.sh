@@ -42,6 +42,8 @@ run '
 echo "libssl.so.3 for .NET..."; run 'test -e /usr/lib/libssl.so.3'
 echo "docker buildx plugin...";  run 'docker buildx version'    # workflows build images via BuildKit
 echo "gh CLI...";                run 'gh --version'
+# The pinned release binary, not get.jetify.com's download-on-first-use launcher.
+echo "devbox...";              run 'devbox version'
 # actions/cache shells out to `tar --posix` + zstd; busybox tar breaks it.
 echo "GNU tar (not busybox)...";  run 'tar --version | head -1 | grep -q "GNU tar" && tar --version | head -1'
 echo "zstd...";                   run 'zstd --version'
