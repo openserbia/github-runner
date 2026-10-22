@@ -38,6 +38,8 @@ echo "gh CLI...";                run 'gh --version'
 # actions/cache shells out to `tar --posix` + zstd; busybox tar breaks it.
 echo "GNU tar (not busybox)...";  run 'tar --version | head -1 | grep -q "GNU tar" && tar --version | head -1'
 echo "zstd...";                   run 'zstd --version'
+# The Nix installer runs `mount -f` when /nix is a volume mount point.
+echo "mount (Nix on a /nix volume)..."; run 'mount --version'
 
 echo "Go registration entrypoint present + runs (fails fast without config)..."
 run 'test -x /usr/local/bin/runner-entrypoint'
