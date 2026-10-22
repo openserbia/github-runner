@@ -26,7 +26,7 @@ concurrency:
 # pinned, checksum-verified release URL) — fewer third-party actions.
 jobs:
   lint:
-    runs-on: ubuntu-latest   # GitHub-hosted — NOT a self-hosted runner
+    runs-on: ubuntu-24.04   # GitHub-hosted — NOT a self-hosted runner
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,7 +50,7 @@ jobs:
   # persistence, excessive permissions, dangerous triggers. Offline audits only,
   # so it needs no token. Pinned release binary, checksum-verified.
   zizmor:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,7 +66,7 @@ jobs:
           ./zizmor --offline --format github .github/workflows .github/dependabot.yml
 
   go:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

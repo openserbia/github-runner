@@ -64,6 +64,7 @@ jobs:
       packages: write      # push per-arch tag to GHCR
       id-token: write      # cosign keyless OIDC + provenance signing
       attestations: write  # GitHub build-provenance attestation
+      artifact-metadata: write  # storage record linking the image to the org's artifacts
     strategy:
       fail-fast: false             # one arch failing must not abort the other
       matrix:
@@ -146,6 +147,7 @@ jobs:
       packages: write      # push manifest list to GHCR
       id-token: write      # cosign sign index + provenance signing
       attestations: write  # GitHub build-provenance attestation
+      artifact-metadata: write  # storage record linking the image to the org's artifacts
     runs-on: ubuntu-24.04
     steps:
       # Needed so devbox.json is present for `devbox run -- cosign` below.

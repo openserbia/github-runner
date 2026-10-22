@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   bump:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write        # push the bump branch
       pull-requests: write   # open / update the PR
