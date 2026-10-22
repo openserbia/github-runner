@@ -21,14 +21,15 @@ replaced its bash registration, so we assemble the runner directly on Wolfi.
 
 The image ships **no Go, go-task or docker compose**: jobs run their toolchain
 through the repo's own `devbox.json` (`devbox run -- task ...`), which pins the
-versions per repo. `node`/`npm` on `PATH` are the runner's bundled node24.
+versions per repo. `node`/`npm` on `PATH` are the runner's node24, the pinned
+official Node 24 build.
 
 Published **multi-arch** to GHCR and **rebuilt weekly**:
 
 | Arch | Built on |
 |---|---|
-| amd64 | self-hosted `X64` runner |
-| arm64 | self-hosted `ARM64` runner |
+| amd64 | GitHub-hosted `ubuntu-24.04` |
+| arm64 | GitHub-hosted `ubuntu-24.04-arm` |
 
 > **Why no `armv7`?** That's the ceiling, and Wolfi is the binding constraint.
 > The `actions/runner` agent *does* ship a 32-bit `linux-arm` (armv7) build, but
@@ -91,12 +92,12 @@ doesn't ship them) and the OS-package surface is minimal + daily-patched, so the
 gate is meaningful out of the box. The scan still uses **`--ignore-unfixed`**
 (report only actionable findings) and **fails the build on a fixable CRITICAL**.
 
-What remains is the `actions/runner` agent's own **bundled** dependencies — its
-vendored `node20`/`node24` (tar/minimatch/glob) and the `docker-cli` Go binaries
-— which are identical on any base and only clear when upstream ships a newer
-agent / Wolfi rebuilds. A small [`.trivyignore`](.trivyignore) holds CVEs whose
-Trivy-listed "fix" isn't actually shipped by the Wolfi repo (currently one
-`openssl-config` config-package mis-match), each with a documented reason.
+What remains is the `actions/runner` agent's own **bundled .NET** runtime and
+libs, and npm's bundled deps inside the pinned Node build, which only clear when
+upstream ships a newer agent / Node release (`bump.yml` picks those up within a
+day). A [`.trivyignore`](.trivyignore) holds any CVE whose Trivy-listed "fix"
+isn't actually shipped by the Wolfi repo, each with a documented reason
+(currently none).
 
 ## Verify an image
 
@@ -114,6 +115,16 @@ A CycloneDX **SBOM** is attested to each image:
 ```bash
 cosign download attestation ghcr.io/openserbia/github-runner:latest
 ```
+
+Images are built on **GitHub-hosted** runners (never the self-hosted pool they
+become) and carry **SLSA build provenance**:
+
+```bash
+gh attestation verify oci://ghcr.io/openserbia/github-runner:latest \
+  --repo openserbia/github-runner
+```
+
+See [SECURITY.md](SECURITY.md) for the security model and accepted risks.
 
 ## Local development
 

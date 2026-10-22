@@ -22,8 +22,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Linters run as plain CLIs (shellcheck preinstalled; hadolint by pinned release
-# URL) — fewer third-party actions, nothing we don't control.
+# Linters run as plain CLIs (shellcheck preinstalled; hadolint and zizmor by
+# pinned, checksum-verified release URL) — fewer third-party actions.
 jobs:
   lint:
     runs-on: ubuntu-latest   # GitHub-hosted — NOT a self-hosted runner
@@ -37,12 +37,33 @@ jobs:
         run: shellcheck test/*.sh
 
       - name: hadolint
-        # Pinned hadolint release binary, run directly against the Dockerfile.
+        # Pinned hadolint release binary (SHA-256 = the release asset's digest),
+        # run directly against the Dockerfile.
         run: |
           curl -fsSL -o hadolint \
-            https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64
+            https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64
+          echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  hadolint" | sha256sum -c -
           chmod +x hadolint
           ./hadolint ./Dockerfile
+
+  # Workflow security audit: template injection, unpinned actions, credential
+  # persistence, excessive permissions, dangerous triggers. Offline audits only,
+  # so it needs no token. Pinned release binary, checksum-verified.
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: zizmor
+        run: |
+          tgz=zizmor-x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSLO "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/$tgz"
+          echo "d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99  $tgz" | sha256sum -c -
+          tar -xzf "$tgz" zizmor
+          ./zizmor --offline --format github .github/workflows .github/dependabot.yml
 
   go:
     runs-on: ubuntu-latest
@@ -52,13 +73,12 @@ jobs:
         with:
           persist-credentials: false
 
-      # Install devbox with its official script — the same way the Dockerfile does
-      # — NOT a marketplace action. devbox auto-installs Nix on first run and
-      # provisions go + golangci-lint from devbox.json/devbox.lock, the single
-      # source of truth shared with build.yml. Avoids setup-go / golangci-lint
-      # actions that would pin Go and golangci-lint a second time and drift.
+      # devbox provisions go + golangci-lint from devbox.json/devbox.lock, the
+      # single source of truth shared with build.yml. Avoids setup-go /
+      # golangci-lint actions that would pin Go and golangci-lint a second time
+      # and drift. The SHA-pinned install action replaces `curl | bash`.
       - name: Install devbox
-        run: curl -fsSL https://get.jetify.com/devbox | bash -s -- -f
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
 
       - name: Test + lint
         run: devbox run -- task test:go lint:go
