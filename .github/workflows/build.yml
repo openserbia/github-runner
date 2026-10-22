@@ -10,7 +10,7 @@ on:
     branches: [main]
     # paths-ignore is scoped to `push` ONLY. GitHub never applies path filters to
     # `schedule`/`workflow_dispatch`, so the weekly cron (which pulls a fresh
-    # myoung34 base + apt upgrade — the patch-delivery channel) and manual runs
+    # wolfi-base + apk upgrade — the patch-delivery channel) and manual runs
     # ALWAYS build. Everything below is doc/meta that cannot change the produced
     # image or its scan/smoke gates, so a doc-only commit skips the matrix.
     paths-ignore:
@@ -19,9 +19,13 @@ on:
       - 'LICENSE'
       - '.gitignore'
       - '.idea/**'
+  # PRs (and dispatches on any branch but main, e.g. from bump.yml) build, scan
+  # and smoke the image but never push, sign or attest: every publishing step
+  # is gated on env.PUBLISH.
+  pull_request:
 
-# Top-level read-only; write scopes (packages/id-token) are granted per-job to
-# only the jobs that push/sign — least privilege.
+# Top-level read-only; write scopes (packages/id-token/attestations) are granted
+# per-job to only the jobs that push/sign — least privilege.
 permissions:
   contents: read
 
@@ -31,37 +35,44 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/openserbia/github-runner
+  PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
+# Builds run on GitHub-HOSTED runners (free for this public repo), never on the
+# self-hosted pool this image becomes: a compromised self-hosted runner must not
+# be able to backdoor the next runner image and, through the weekly rebuild,
+# every host. Hosted runners are fresh VMs per job.
+#
 # Tooling (trivy, syft, cosign, go-task) comes from devbox.json via `devbox run`
-# on the self-hosted runners — NOT from marketplace tool-wrapper actions
-# (race-proof, nothing we don't control). Same philosophy as postgres-wolfi.
+# — NOT from marketplace tool-wrapper actions (race-proof, nothing we don't
+# control). Same philosophy as postgres-wolfi.
 #
 # Multi-arch:
-#   - `build`    fans out over arches (amd64/arm64). Each leg builds NATIVELY on
-#                a self-hosted runner of its arch — routed by GitHub's built-in
-#                X64 / ARM64 labels — so no buildx/QEMU. It scans + smokes on that
-#                real hardware, pushes a per-arch tag (:latest-<arch>, an
-#                implementation-detail handoff), then signs/attests it BY DIGEST.
+#   - `build`    fans out over arches (amd64/arm64), each NATIVELY on a hosted
+#                runner of that arch (ubuntu-24.04 / ubuntu-24.04-arm), so no
+#                buildx/QEMU. It scans + smokes, then (main only) pushes a
+#                per-arch tag (:latest-<arch>, an implementation-detail handoff),
+#                signs it, attests the SBOM and SLSA build provenance BY DIGEST.
 #                The scan/smoke gate the push, so a bad arch publishes nothing.
 #   - `manifest` stitches the two per-arch images into the public :latest
-#                multi-arch list and signs the index. There is no dated tag —
-#                pin an immutable build by its @sha256 digest (cosign-signed).
+#                multi-arch list, then signs and provenance-attests the index.
+#                There is no dated tag — pin an immutable build by its @sha256
+#                digest (cosign-signed, `gh attestation verify`-able).
 jobs:
   build:
     permissions:
       contents: read       # checkout
       packages: write      # push per-arch tag to GHCR
-      id-token: write      # cosign keyless OIDC
+      id-token: write      # cosign keyless OIDC + provenance signing
+      attestations: write  # GitHub build-provenance attestation
     strategy:
       fail-fast: false             # one arch failing must not abort the other
       matrix:
-        arch: ["amd64", "arm64"]
         include:
           - arch: amd64
-            runner: X64
+            runner: ubuntu-24.04
           - arch: arm64
-            runner: ARM64
-    runs-on: [self-hosted, "${{ matrix.runner }}"]
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     env:
       ARCH: ${{ matrix.arch }}
     steps:
@@ -69,6 +80,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
 
       # Native single-arch build: the runner's hardware arch == matrix.arch, so a
       # plain `docker build` already produces the correct arch (no buildx/QEMU).
@@ -81,6 +95,7 @@ jobs:
         run: devbox run -- task scan sbom smoke REF="$IMAGE:latest-$ARCH"
 
       - name: Upload SBOM
+        if: env.PUBLISH == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: sbom-${{ matrix.arch }}
@@ -88,55 +103,92 @@ jobs:
           retention-days: 1
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        if: env.PUBLISH == 'true'
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
       - name: Push (per-arch tag)
-        run: docker push "$IMAGE:latest-$ARCH"
-
-      - name: Sign + attest per-arch (by digest, via devbox cosign)
+        id: push
+        if: env.PUBLISH == 'true'
         run: |
-          DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:latest-$ARCH")
-          echo "signing $DIGEST"
-          devbox run -- cosign sign --yes "$DIGEST"
-          devbox run -- cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$DIGEST"
+          docker push "$IMAGE:latest-$ARCH"
+          ref=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:latest-$ARCH")
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign + attest SBOM per-arch (by digest, via devbox cosign)
+        if: env.PUBLISH == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          echo "signing $IMAGE@$DIGEST"
+          devbox run -- cosign sign --yes "$IMAGE@$DIGEST"
+          devbox run -- cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE@$DIGEST"
+
+      # SLSA build provenance (which repo, workflow, commit and runner built this
+      # digest), stored in GHCR next to the image and in the repo's attestations.
+      - name: Attest build provenance
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   manifest:
     # Runs only if BOTH build legs succeeded (default needs-gating) — so a broken
     # arch never yields a published multi-arch list.
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     permissions:
-      contents: write     # push the README image-size badge update
+      contents: write      # push the README image-size badge update
       packages: write      # push manifest list to GHCR
-      id-token: write      # cosign sign index
-    runs-on: [self-hosted, X64]
+      id-token: write      # cosign sign index + provenance signing
+      attestations: write  # GitHub build-provenance attestation
+    runs-on: ubuntu-24.04
     steps:
-      # Needed so devbox.json is present for `devbox run -- cosign` below — a
-      # self-hosted runner does NOT guarantee the build job's workspace persists
-      # to this job (it may run on a different runner of the pool).
+      # Needed so devbox.json is present for `devbox run -- cosign` below.
       # persist-credentials: true keeps the token for the badge-update push below.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: true
+          persist-credentials: true  # zizmor: ignore[artipacked] badge push below; no artifact uploads in this job
+
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
       # Assemble the per-arch images into the public :latest multi-arch list.
       - name: Create + push manifest list
+        id: index
         run: |
           docker buildx imagetools create \
             -t "$IMAGE:latest" \
             "$IMAGE:latest-amd64" \
             "$IMAGE:latest-arm64"
+          echo "digest=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
 
       # Sign the index digest so `cosign verify :latest` (which resolves to the
       # index) passes. Per-arch children were already signed + SBOM-attested.
       - name: Sign manifest list (by digest, via devbox cosign)
+        env:
+          DIGEST: ${{ steps.index.outputs.digest }}
         run: |
-          DIGEST=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{.Manifest.Digest}}')
           echo "signing index $IMAGE@$DIGEST"
           devbox run -- cosign sign --yes "$IMAGE@$DIGEST"
+
+      - name: Attest build provenance (index)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          push-to-registry: true
 
       # Keep the README image-size badge current: the amd64 compressed size
       # (config + layers from its registry manifest), committed back with
@@ -145,12 +197,16 @@ jobs:
       - name: Update README image-size badge
         continue-on-error: true
         run: |
-          # latest-amd64 is an OCI index (buildkit wraps single-platform images +
-          # an attestation manifest), so resolve the amd64 image manifest first,
-          # then sum its config + layer (compressed) sizes.
-          digest=$(docker manifest inspect "$IMAGE:latest-amd64" \
-            | jq -r '.manifests[] | select(.platform.architecture=="amd64" and .platform.os=="linux") | .digest')
-          bytes=$(docker manifest inspect "$IMAGE@$digest" | jq '[.config.size] + [.layers[].size] | add')
+          # latest-amd64 may be an OCI index (buildkit wraps single-platform
+          # images + an attestation manifest) or a plain image manifest,
+          # depending on the runner's Docker image store. Resolve to the amd64
+          # image manifest either way, then sum its config + layer sizes.
+          manifest=$(docker manifest inspect "$IMAGE:latest-amd64")
+          if jq -e '.manifests' <<<"$manifest" >/dev/null; then
+            digest=$(jq -r '.manifests[] | select(.platform.architecture=="amd64" and .platform.os=="linux") | .digest' <<<"$manifest")
+            manifest=$(docker manifest inspect "$IMAGE@$digest")
+          fi
+          bytes=$(jq '[.config.size] + [.layers[].size] | add' <<<"$manifest")
           human=$(awk -v b="$bytes" 'BEGIN{ m=b/1048576; if (m>=1024) printf "%.2f GiB", m/1024; else printf "%d MiB", m }')
           enc=${human/ /%20}
           sed -i -E "s#(badge/image%20size-)[^-]*(-2496ed)#\1${enc}\2#" README.md
