@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OpenSerbia
+# SPDX-License-Identifier: MIT
+name: bump
+
+# Keeps the Dockerfile ARG pins Dependabot can't parse (actions/runner, Node 24,
+# devbox) current, with their digests, via a PR. Running often is a hard need,
+# not a nicety: GitHub stops sending jobs to a runner more than ~30 days behind the
+# latest release when auto-update is off, which it is for this image.
+on:
+  schedule:
+    - cron: "41 4 * * *"   # daily 04:41 UTC; no-op unless something moved
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the bump branch
+      pull-requests: write   # open / update the PR
+      actions: write         # dispatch build.yml on the branch (see below)
+    env:
+      BRANCH: bump/dockerfile-pins
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true  # zizmor: ignore[artipacked] pushes the bump branch; no artifact uploads in this job
+
+      - name: Bump pins
+        id: bump
+        run: |
+          summary=$(.github/scripts/bump-pins.sh)
+          if [ -z "$summary" ]; then echo "all pins current"; exit 0; fi
+          {
+            echo "summary<<EOF"
+            echo "$summary"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # One rolling branch/PR: re-running force-updates it with the newest pins.
+      - name: Open or update PR
+        if: steps.bump.outputs.summary != ''
+        env:
+          SUMMARY: ${{ steps.bump.outputs.summary }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -am "build: bump Dockerfile pins" -m "$SUMMARY"
+          git push --force origin "$BRANCH"
+          body=$(printf '%s\n\n%s\n' "$SUMMARY" \
+            "The build check is dispatched on this branch (PRs opened with GITHUB_TOKEN don't trigger workflows). It builds, scans and smokes both arches without publishing; merge once it is green.")
+          if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -qx OPEN; then
+            gh pr edit "$BRANCH" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "build: bump Dockerfile pins" --body "$body" --label dependencies
+          fi
+          # workflow_dispatch is the one trigger GITHUB_TOKEN may fire. build.yml
+          # only publishes from main, so on this branch it is a pure check.
+          gh workflow run build.yml --ref "$BRANCH"

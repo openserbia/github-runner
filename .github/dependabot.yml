@@ -2,6 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 version: 2
+
+# cooldown: version updates wait 7 days after a release before Dependabot
+# proposes them, so a hijacked or malicious release (tj-actions, trivy-action,
+# npm worms) is usually caught and yanked first. Security updates skip the wait.
+#
+# Not covered here (Dependabot can't parse them): the Dockerfile ARGs
+# (RUNNER_VERSION, NODE_VERSION, DEVBOX_*), handled by .github/workflows/bump.yml.
 updates:
   # GitHub Actions used by the workflows (.github/workflows/*).
   # Keeps the SHA-pins current; PRs land with the "ci" commit prefix.
@@ -10,6 +17,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
     labels:
@@ -22,6 +31,21 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+
+  # Go modules of the registration entrypoint (go.mod).
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
     labels:
