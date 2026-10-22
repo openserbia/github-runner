@@ -35,6 +35,12 @@ func main() {
 }
 
 func run() error {
+	// Before config: independent of registration, and it lets the smoke test
+	// exercise it by running the entrypoint with no configuration.
+	if err := runner.RestoreNixConfig("/"); err != nil {
+		return fmt.Errorf("restore nix config: %w", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
