@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/rs/zerolog/log"
@@ -96,7 +98,26 @@ func Exec(cfg config.Config, encodedJIT string) error {
 	argv := []string{listener, "run", "--jitconfig", encodedJIT}
 	log.Info().Str("listener", listener).Msg("exec runner agent (jitconfig redacted)")
 	// syscall.Exec only returns on failure.
-	return syscall.Exec(listener, argv, os.Environ()) //nolint:gosec // listener path is from trusted config
+	return syscall.Exec(listener, argv, jobEnv(os.Environ())) //nolint:gosec // listener path is from trusted config
+}
+
+// secretEnv names the entrypoint's own credentials. The agent passes its
+// environment on to every job step, so leaving them set would hand any job (or
+// any dependency's install script that harvests env vars) the org runner-admin
+// token. Registration is done by now, and jobs reach the PAT through the git
+// URL rewrite and GITHUB_TOKEN_FILE set up in SetupWorkflowAuth.
+var secretEnv = []string{"ACCESS_TOKEN", "GITHUB_PAT"}
+
+// jobEnv returns environ without the secretEnv entries.
+func jobEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		key, _, _ := strings.Cut(kv, "=")
+		if !slices.Contains(secretEnv, key) {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 func gitConfigGlobal(ctx context.Context, key, value string) error {

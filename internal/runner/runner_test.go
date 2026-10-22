@@ -32,3 +32,24 @@ func TestSetupWorkflowAuthWritesCurlrc(t *testing.T) {
 		t.Errorf("curlrc missing runner UA:\n%s", b)
 	}
 }
+
+func TestJobEnvDropsEntrypointSecrets(t *testing.T) {
+	in := []string{
+		"PATH=/usr/bin",
+		"ACCESS_TOKEN=ghp_admin",
+		"GITHUB_PAT=ghp_read",
+		"GITHUB_PAT_EXTRA=kept", // only exact names are secrets
+		"GITHUB_TOKEN_FILE=/tmp/.github-pat",
+		"EMPTY_VALUE=",
+	}
+	got := strings.Join(jobEnv(in), "\n")
+	want := strings.Join([]string{
+		"PATH=/usr/bin",
+		"GITHUB_PAT_EXTRA=kept",
+		"GITHUB_TOKEN_FILE=/tmp/.github-pat",
+		"EMPTY_VALUE=",
+	}, "\n")
+	if got != want {
+		t.Fatalf("jobEnv:\n got: %q\nwant: %q", got, want)
+	}
+}
