@@ -40,7 +40,7 @@ jobs:
         # Pinned hadolint release binary, run directly against the Dockerfile.
         run: |
           curl -fsSL -o hadolint \
-            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+            https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64
           chmod +x hadolint
           ./hadolint ./Dockerfile
 
