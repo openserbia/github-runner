@@ -65,6 +65,7 @@ jobs:
       id-token: write      # cosign keyless OIDC + provenance signing
       attestations: write  # GitHub build-provenance attestation
       artifact-metadata: write  # storage record linking the image to the org's artifacts
+      actions: write            # Nix store cache for devbox-install-action
     strategy:
       fail-fast: false             # one arch failing must not abort the other
       matrix:
@@ -84,6 +85,9 @@ jobs:
 
       - name: Install devbox
         uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+
+        with:
+          enable-cache: true
 
       # Native single-arch build: the runner's hardware arch == matrix.arch, so a
       # plain `docker build` already produces the correct arch (no buildx/QEMU).
@@ -148,6 +152,7 @@ jobs:
       id-token: write      # cosign sign index + provenance signing
       attestations: write  # GitHub build-provenance attestation
       artifact-metadata: write  # storage record linking the image to the org's artifacts
+      actions: write            # Nix store cache for devbox-install-action
     runs-on: ubuntu-24.04
     steps:
       # Needed so devbox.json is present for `devbox run -- cosign` below.
@@ -159,6 +164,9 @@ jobs:
 
       - name: Install devbox
         uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+
+        with:
+          enable-cache: true
 
       - name: Log in to GHCR
         env:
