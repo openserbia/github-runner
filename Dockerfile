@@ -72,10 +72,10 @@ FROM cgr.dev/chainguard/wolfi-base:latest
 # Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
 # Each download below is SHA-256 checked (devbox: commit-pinned, above). .github/workflows/bump.yml keeps these
 # ARGs (versions + digests) current; bump them together by hand otherwise.
-ARG RUNNER_VERSION=2.338.0
+ARG RUNNER_VERSION=2.338.1
 # From the release notes' "SHA-256 Checksums" block.
-ARG RUNNER_SHA256_X64=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
-ARG RUNNER_SHA256_ARM64=628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b
+ARG RUNNER_SHA256_X64=08e9ccb3604d2462c24b5e33604dc30810296ca15cc65f23cffd4317eb144c37
+ARG RUNNER_SHA256_ARM64=475e0c149fd3b611610127b9664ba5bacf5c6928795cc448ab520bb5f324bede
 # Node 24 that runs every JS action, replacing the runner's bundled node24 (see
 # the runner RUN below). Stays on 24: the runner has no node26 handler.
 ARG NODE_VERSION=24.22.1
