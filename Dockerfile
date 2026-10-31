@@ -47,8 +47,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # against the tag's commit; devbox's go.sum (via the checksum DB) verifies deps.
 # Telemetry/Sentry keys from upstream's goreleaser config are deliberately unset.
 FROM golang:1.27.3 AS devbox-build
-ARG DEVBOX_VERSION=0.18.4
-ARG DEVBOX_COMMIT=ed729044dcdaaa379c3ac98a64efc2d68ba97c76
+ARG DEVBOX_VERSION=0.19.0
+ARG DEVBOX_COMMIT=9a06daf9a0bd1405c0fd9e5eec373c41a0a48368
 RUN git -c advice.detachedHead=false clone -q --depth 1 --branch "${DEVBOX_VERSION}" \
       https://github.com/jetify-com/devbox /src \
  && test "$(git -C /src rev-parse HEAD)" = "${DEVBOX_COMMIT}"
@@ -72,13 +72,13 @@ FROM cgr.dev/chainguard/wolfi-base:latest
 # Pinned (deliberate-bump) versions for the bits NOT delivered via Wolfi's repo.
 # Each download below is SHA-256 checked (devbox: commit-pinned, above). .github/workflows/bump.yml keeps these
 # ARGs (versions + digests) current; bump them together by hand otherwise.
-ARG RUNNER_VERSION=2.338.0
+ARG RUNNER_VERSION=2.338.2
 # From the release notes' "SHA-256 Checksums" block.
-ARG RUNNER_SHA256_X64=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
-ARG RUNNER_SHA256_ARM64=628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b
+ARG RUNNER_SHA256_X64=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40
+ARG RUNNER_SHA256_ARM64=670adb2f268fe21dcbb58b3db0e0aa9d5b3bddfe2c651481336e561ff86de945
 # Node 24 that runs every JS action, replacing the runner's bundled node24 (see
 # the runner RUN below). Stays on 24: the runner has no node26 handler.
-ARG NODE_VERSION=24.22.1
+ARG NODE_VERSION=24.22.2
 
 # Runtime deps, installed first with the default /bin/sh (wolfi-base has no bash):
 #  - native libs the bundled .NET runner loads (krb5/libssl3/zlib/lttng-ust/
