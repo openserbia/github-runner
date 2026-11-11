@@ -43,9 +43,9 @@
       "last_modified": "2026-10-20T14:23:57Z",
       "resolved": "github:NixOS/nixpkgs/5adc50831c259f87faeb09ddf930d43597197473?lastModified=1792506237&narHash=sha256-Q%2F8KLB6jNfpaUN1HAedE%2Fu%2FEt9feE%2FzYSsutBLKrCFk%3D"
     },
-    "github:openserbia/go-flake#go_1_27_3": {
-      "last_modified": "2026-10-20T11:01:23Z",
-      "resolved": "github:openserbia/go-flake/240b8346767c59c1b9bafdb20930b67966e2b2d5?lastModified=1792494083&narHash=sha256-khN0ImvFDHK6EwfGdwXwUMtt66E063A3vf7lQBl%2F7A0%3D#go_1_27_3"
+    "github:openserbia/go-flake#go_1_27_4": {
+      "last_modified": "2026-11-11T08:46:08Z",
+      "resolved": "github:openserbia/go-flake/9e8f1558cbc7f655ce905d4ccc9156db8d112ad4?lastModified=1794386768&narHash=sha256-p%2B5sGl61cf2X%2BtXSUuos4GvUzCZRgd%2Fy64nPjkBCUxM%3D#go_1_27_4"
     },
     "github:openserbia/go-flake#golangci-lint_2_15_0": {
       "last_modified": "2026-10-17T09:46:38Z",

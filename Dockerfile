@@ -25,7 +25,7 @@
 # (`go test`/`go vet` run here too, so a failure fails the image build).
 # Cache mounts keep the module and build caches across builds without baking
 # them into a layer (GOPATH is /go in the golang image, HOME is /root).
-FROM golang:1.27.3 AS entrypoint-build
+FROM golang:1.27.4 AS entrypoint-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # on first use: in an ephemeral container, on every job. The clone is checked
 # against the tag's commit; devbox's go.sum (via the checksum DB) verifies deps.
 # Telemetry/Sentry keys from upstream's goreleaser config are deliberately unset.
-FROM golang:1.27.3 AS devbox-build
+FROM golang:1.27.4 AS devbox-build
 ARG DEVBOX_VERSION=0.18.4
 ARG DEVBOX_COMMIT=ed729044dcdaaa379c3ac98a64efc2d68ba97c76
 RUN git -c advice.detachedHead=false clone -q --depth 1 --branch "${DEVBOX_VERSION}" \
